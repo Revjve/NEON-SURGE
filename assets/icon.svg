@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="72%">
+      <stop offset="0" stop-color="#131f5c"/>
+      <stop offset="0.55" stop-color="#070b26"/>
+      <stop offset="1" stop-color="#02030a"/>
+    </radialGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="9" result="wide"/>
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="tight"/>
+      <feMerge>
+        <feMergeNode in="wide"/>
+        <feMergeNode in="wide"/>
+        <feMergeNode in="tight"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="round"><rect width="256" height="256" rx="52"/></clipPath>
+  </defs>
+  <g clip-path="url(#round)">
+    <rect width="256" height="256" fill="url(#bg)"/>
+    <g stroke="#2436a8" stroke-width="2" opacity="0.55">
+      <path d="M0 64H256M0 128H256M0 192H256M64 0V256M128 0V256M192 0V256"/>
+    </g>
+    <path d="M128 34 L206 212 L128 168 L50 212 Z" fill="rgba(62,242,255,0.14)" stroke="#3ef2ff" stroke-width="14" stroke-linejoin="round" filter="url(#glow)"/>
+    <path d="M128 92 L166 180 L128 158 L90 180 Z" fill="none" stroke="#ff2bd6" stroke-width="8" stroke-linejoin="round" filter="url(#glow)"/>
+    <path d="M128 34 L206 212 L128 168 L50 212 Z" fill="none" stroke="#f2feff" stroke-width="4.5" stroke-linejoin="round"/>
+  </g>
+</svg>

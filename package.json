@@ -1,0 +1,61 @@
+{
+  "name": "neon-surge",
+  "productName": "Neon Surge",
+  "version": "1.0.0",
+  "description": "A hyper-kinetic neon twin-stick survival shooter built with PixiJS, WebGL 2 and the Web Audio API.",
+  "author": "NEON SURGE Developers",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:windowed": "electron . --windowed",
+    "serve": "node tools/serve.mjs 8080",
+    "build:web": "node tools/build-web.mjs",
+    "build:win": "electron-builder --win --x64",
+    "build:win:portable": "electron-builder --win portable --x64",
+    "build:win:installer": "electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.neonsurge.game",
+    "productName": "Neon Surge",
+    "copyright": "Copyright © 2026 NEON SURGE Developers",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "index.html",
+      "css/**/*",
+      "src/**/*",
+      "vendor/**/*",
+      "assets/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Neon Surge",
+      "artifactName": "NeonSurge-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "NeonSurge-${version}-Portable.${ext}"
+    }
+  }
+}

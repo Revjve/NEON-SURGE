@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NEON SURGE</title>
+  <meta name="description" content="NEON SURGE — a hyper-kinetic twin-stick survival shooter drenched in bloom, shockwaves and synthwave.">
+  <meta name="theme-color" content="#03040b">
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+  <link rel="preload" href="assets/fonts/orbitron-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/rajdhani-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="stage" aria-hidden="true"></div>
+
+  <!-- In-game HUD -->
+  <div id="hud" class="hud" hidden>
+    <div class="hud-block hud-left">
+      <div class="hud-label">SCORE</div>
+      <div id="hud-score" class="hud-score">0</div>
+      <div class="hud-mult"><span id="hud-mult">×1</span><span class="hud-label">MULTIPLIER</span></div>
+    </div>
+    <div class="hud-block hud-center">
+      <div id="hud-lives" class="hud-lives" aria-label="Lives"></div>
+      <div id="hud-weapon" class="hud-weapon">WEAPON MK I</div>
+    </div>
+    <div class="hud-block hud-right">
+      <div class="hud-label">BEST</div>
+      <div id="hud-best" class="hud-best">0</div>
+      <div id="hud-level" class="hud-level">THREAT LV 1</div>
+    </div>
+    <div class="hud-surge" id="hud-surge">
+      <div class="hud-surge-head"><span>SURGE</span><span id="hud-surge-state">CHARGING</span></div>
+      <div class="hud-surge-bar"><div id="hud-surge-fill" class="hud-surge-fill"></div></div>
+    </div>
+  </div>
+
+  <div id="announce" class="announce" aria-live="polite"></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="fps" class="fps" hidden></div>
+
+  <!-- Boot / loading -->
+  <section id="screen-boot" class="screen active">
+    <h1 class="logo small"><span class="w1" data-text="NEON">NEON</span><span class="w2" data-text="SURGE">SURGE</span></h1>
+    <div id="boot-status" class="boot-status">INITIALISING</div>
+    <div id="boot-error" class="boot-error" hidden></div>
+  </section>
+
+  <!-- Title -->
+  <section id="screen-title" class="screen">
+    <h1 class="logo"><span class="w1" data-text="NEON">NEON</span><span class="w2" data-text="SURGE">SURGE</span></h1>
+    <p class="tagline">SURVIVE THE GRID</p>
+    <nav class="menu">
+      <button class="btn primary" data-action="play">PLAY</button>
+      <button class="btn" data-action="help">HOW TO PLAY</button>
+      <button class="btn" data-action="settings">SETTINGS</button>
+      <button class="btn desktop-only" data-action="quit">QUIT</button>
+    </nav>
+    <div class="title-best">BEST SCORE <span id="title-best">0</span></div>
+    <p class="hint">PRESS <kbd>ENTER</kbd> TO LAUNCH</p>
+    <p class="touch-note">NEON SURGE needs a keyboard + mouse or a gamepad.</p>
+  </section>
+
+  <!-- How to play -->
+  <section id="screen-help" class="screen">
+    <div class="panel wide">
+      <h2>HOW TO PLAY</h2>
+      <div class="help-grid">
+        <div class="help-col">
+          <h3>CONTROLS</h3>
+          <dl class="keys">
+            <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>ARROWS</kbd></dt><dd>Move</dd>
+            <dt><kbd>MOUSE</kbd></dt><dd>Aim</dd>
+            <dt><kbd>LEFT CLICK</kbd></dt><dd>Rapid-fire plasma</dd>
+            <dt><kbd>SPACE</kbd> / <kbd>RIGHT CLICK</kbd></dt><dd>Unleash SURGE (when charged)</dd>
+            <dt><kbd>ESC</kbd> / <kbd>P</kbd></dt><dd>Pause</dd>
+            <dt><kbd>M</kbd></dt><dd>Mute</dd>
+            <dt><kbd>F</kbd> / <kbd>F11</kbd></dt><dd>Fullscreen</dd>
+            <dt>GAMEPAD</dt><dd>Left stick move · right stick aim &amp; fire · LB / A surge</dd>
+          </dl>
+          <h3>SURVIVAL</h3>
+          <ul class="tips">
+            <li>Kills drop <b class="gold">gold flux</b>. Collect it to raise your score multiplier.</li>
+            <li>Getting hit costs a ship and resets the multiplier.</li>
+            <li>Every kill charges <b class="violet">SURGE</b>, a shockwave that wipes the screen.</li>
+            <li>Score unlocks weapon upgrades. It also makes the swarm faster and tougher.</li>
+          </ul>
+        </div>
+        <div class="help-col">
+          <h3>HOSTILES</h3>
+          <ul class="bestiary">
+            <li><i style="--c:#ff2bd6"></i><b>DART</b><span>Relentless chaser. Hunts in packs.</span></li>
+            <li><i style="--c:#4d8bff"></i><b>WISP</b><span>Weaves and side-steps your fire.</span></li>
+            <li><i style="--c:#c6ff2e"></i><b>LANCER</b><span>Locks on, then dashes along its beam.</span></li>
+            <li><i style="--c:#ff7a1a"></i><b>BULWARK</b><span>Slow armoured tank. Huge explosion.</span></li>
+            <li><i style="--c:#a45cff"></i><b>HIVE</b><span>Bursts into fast mites when destroyed.</span></li>
+            <li><i style="--c:#ff2d55"></i><b>SENTRY</b><span>Keeps its distance and fires plasma orbs. Shoot the orbs down.</span></li>
+          </ul>
+        </div>
+      </div>
+      <button class="btn" data-action="back">BACK</button>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section id="screen-settings" class="screen">
+    <div class="panel">
+      <h2>SETTINGS</h2>
+      <div class="settings">
+        <label class="row"><span>MASTER VOLUME</span><input type="range" min="0" max="100" data-setting="master"></label>
+        <label class="row"><span>MUSIC</span><input type="range" min="0" max="100" data-setting="music"></label>
+        <label class="row"><span>EFFECTS</span><input type="range" min="0" max="100" data-setting="sfx"></label>
+        <label class="row"><span>SCREEN SHAKE</span><input type="range" min="0" max="100" data-setting="shake"></label>
+        <div class="row"><span>GRAPHICS</span>
+          <div class="seg" data-setting="quality">
+            <button data-value="auto">AUTO</button><button data-value="high">HIGH</button><button data-value="medium">MED</button><button data-value="low">LOW</button>
+          </div>
+        </div>
+        <label class="row toggle"><span>REDUCE FLASHING</span><input type="checkbox" data-setting="reduceFlashes"><i></i></label>
+        <label class="row toggle"><span>CRT SCANLINES</span><input type="checkbox" data-setting="scanlines"><i></i></label>
+        <label class="row toggle"><span>SHOW FPS</span><input type="checkbox" data-setting="showFps"><i></i></label>
+        <div class="row"><span>DISPLAY</span><button class="btn small" data-action="fullscreen">TOGGLE FULLSCREEN</button></div>
+      </div>
+      <button class="btn" data-action="back">BACK</button>
+    </div>
+  </section>
+
+  <!-- Pause -->
+  <section id="screen-pause" class="screen">
+    <h2 class="screen-title">PAUSED</h2>
+    <nav class="menu">
+      <button class="btn primary" data-action="resume">RESUME</button>
+      <button class="btn" data-action="restart">RESTART</button>
+      <button class="btn" data-action="settings">SETTINGS</button>
+      <button class="btn" data-action="title">QUIT TO TITLE</button>
+    </nav>
+  </section>
+
+  <!-- Game over -->
+  <section id="screen-over" class="screen">
+    <h2 class="screen-title danger">GAME OVER</h2>
+    <div id="over-best" class="badge" hidden>NEW BEST</div>
+    <div class="over-score" id="over-score">0</div>
+    <div class="stats">
+      <div><span>SURVIVED</span><b id="over-time">0:00</b></div>
+      <div><span>KILLS</span><b id="over-kills">0</b></div>
+      <div><span>MAX MULTIPLIER</span><b id="over-mult">×1</b></div>
+      <div><span>ACCURACY</span><b id="over-acc">0%</b></div>
+      <div><span>THREAT LEVEL</span><b id="over-level">1</b></div>
+      <div><span>BEST</span><b id="over-bestscore">0</b></div>
+    </div>
+    <nav class="menu row">
+      <button class="btn primary" data-action="play">RETRY</button>
+      <button class="btn" data-action="title">MAIN MENU</button>
+    </nav>
+  </section>
+
+  <!-- Desktop (frameless window) title bar, only in windowed mode on menus -->
+  <div id="titlebar" class="titlebar" hidden>
+    <div class="titlebar-drag">NEON SURGE</div>
+    <button class="titlebar-btn" data-win="fullscreen" title="Fullscreen (F11)" aria-label="Fullscreen">&#x26F6;</button>
+    <button class="titlebar-btn" data-win="minimize" title="Minimize" aria-label="Minimize">&#x2013;</button>
+    <button class="titlebar-btn close" data-win="close" title="Quit" aria-label="Quit">&#x2715;</button>
+  </div>
+
+  <noscript><div class="noscript">NEON SURGE needs JavaScript enabled.</div></noscript>
+  <script src="src/preflight.js"></script>
+  <script type="module" src="src/boot.js"></script>
+</body>
+</html>
