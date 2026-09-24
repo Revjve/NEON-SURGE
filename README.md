@@ -70,7 +70,7 @@ NEON-SURGE/
 │       ├── icons.js           Inline SVG icons for upgrades, chips and the shop
 │       └── settings.js        Persistent settings (localStorage)
 ├── vendor/
-│   ├── pixi.min.mjs           PixiJS 8.21.0 ESM build (same file the CDN serves)
+│   ├── pixi.min.js            PixiJS 8.21.0 ESM build (same bytes the CDN serves as .mjs)
 │   └── PIXI-LICENSE.txt
 ├── assets/
 │   ├── icon.svg, icon.png     Favicon / window icon

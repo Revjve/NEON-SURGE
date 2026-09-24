@@ -6,7 +6,10 @@ const MOVE_KEYS = {
   KeyA: [-1, 0], ArrowLeft: [-1, 0],
   KeyD: [1, 0], ArrowRight: [1, 0],
 };
-const BLOCK_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+// Keys whose default action would scroll the page. Inside an embed (itch.io) a scroll the
+// game iframe can't perform chains up to the host page, so these are always swallowed
+// (except while a form control such as a settings slider has focus).
+const BLOCK_DEFAULT = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End']);
 const DEADZONE = 0.22;
 
 function radial(x, y) {

@@ -3,12 +3,14 @@
 // The web build (itch.io / any static host) loads the pinned PixiJS release from the
 // jsDelivr CDN. If the CDN is unreachable (offline, blocked, corporate proxy) or we are
 // running inside the Electron desktop build, the byte-identical copy bundled in /vendor
-// is used instead, so the game always boots.
+// is used instead, so the game always boots. The local copy uses a plain `.js` extension:
+// every static host serves that as JavaScript, while `.mjs` is sometimes served as
+// application/octet-stream, which browsers refuse to run as a module.
 
 export const PIXI_VERSION = '8.21.0';
 
 const CDN_URL = `https://cdn.jsdelivr.net/npm/pixi.js@${PIXI_VERSION}/dist/pixi.min.mjs`;
-const LOCAL_URL = new URL('../../vendor/pixi.min.mjs', import.meta.url).href;
+const LOCAL_URL = new URL('../../vendor/pixi.min.js', import.meta.url).href;
 const CDN_TIMEOUT_MS = 8000;
 
 const params = new URLSearchParams(location.search);
