@@ -7,6 +7,9 @@
   "license": "UNLICENSED",
   "private": true,
   "main": "electron/main.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "start": "electron .",
     "start:windowed": "electron . --windowed",

@@ -116,7 +116,36 @@ npm run build:web              # -> dist/neon-surge-web.zip  (index.html at the 
 
 ## Build the Windows `.exe`
 
-Requirements: Windows 10/11 x64 and **Node.js 20 LTS or newer** (https://nodejs.org).
+Requirements: Windows 10/11 x64 and **Node.js 22.12 or newer** (the current LTS release is
+fine). npm comes with Node.js.
+
+### Installing Node.js and npm (Windows)
+
+```powershell
+winget install -e --id OpenJS.NodeJS.LTS
+```
+
+If `winget` isn't available, download the **LTS** installer from https://nodejs.org and run it
+with the default options.
+
+Then **close the terminal and open a new one**, so it picks up the new PATH, and check:
+
+```powershell
+node -v    # must print v22.12.0 or higher
+npm -v
+```
+
+Troubleshooting:
+
+- `'npm' is not recognized...`: Node.js isn't installed, or the terminal was opened before the
+  install finished. Open a new terminal (or sign out and back in).
+- `npm.ps1 cannot be loaded because running scripts is disabled on this system` (PowerShell):
+  run `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` once and answer `Y`.
+  Alternatively, use **Command Prompt** (`cmd`) instead of PowerShell.
+- `node -v` shows an older version: run `winget upgrade -e --id OpenJS.NodeJS.LTS`, or install the
+  current LTS from nodejs.org.
+
+### Building
 
 Run these in PowerShell or cmd, in the project folder:
 
