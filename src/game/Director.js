@@ -1,22 +1,25 @@
-import { ARENA, DIRECTOR, ENEMIES } from '../config.js';
+import { ARENA, ENEMIES, ROUNDS } from '../config.js';
 import { rand, randInt, pick } from '../core/math.js';
 
-// How each archetype arrives: relative frequency, group size (grows with threat), spread.
+// How each archetype arrives: relative frequency, group size (grows with the round), spread.
 const GROUPS = {
-  dart: { weight: 10, size: (t) => randInt(3, 4 + Math.min(6, Math.floor(t))), spread: 60 },
-  wisp: { weight: 6, size: (t) => randInt(2, 3 + Math.min(3, Math.floor(t / 2))), spread: 55 },
-  lancer: { weight: 5, size: (t) => randInt(1, 2 + Math.min(2, Math.floor(t / 3))), spread: 90 },
-  bulwark: { weight: 3, size: (t) => randInt(1, 1 + Math.min(2, Math.floor(t / 4))), spread: 110 },
-  hive: { weight: 4, size: (t) => randInt(1, 2 + Math.min(1, Math.floor(t / 5))), spread: 90 },
-  sentry: { weight: 3, size: (t) => randInt(1, 1 + Math.min(2, Math.floor(t / 5))), spread: 160 },
+  dart: { weight: 10, size: (k) => randInt(3, 4 + Math.min(6, Math.floor(k * 0.7))), spread: 60 },
+  wisp: { weight: 6, size: (k) => randInt(2, 3 + Math.min(3, Math.floor(k / 3))), spread: 55 },
+  lancer: { weight: 5, size: (k) => randInt(1, 1 + Math.min(3, Math.floor(k / 3))), spread: 90 },
+  bulwark: { weight: 3, size: (k) => randInt(1, 1 + Math.min(2, Math.floor(k / 6))), spread: 110 },
+  hive: { weight: 4, size: (k) => randInt(1, 2 + Math.min(1, Math.floor(k / 7))), spread: 90 },
+  sentry: { weight: 3, size: (k) => randInt(1, 1 + Math.min(2, Math.floor(k / 7))), spread: 160 },
 };
 
+// Telegraphed set pieces and the first round each can appear in.
+const SET_PIECES = [['swarm', 1], ['pincer', 2], ['lancers', 3], ['siege', 4], ['crossfire', 6]];
+const ELITE_KINDS = ['bulwark', 'sentry', 'hive', 'lancer'];
 const INSET = 46;
 
 /**
- * Spawn director. "Threat" rises with both score and survival time; it feeds the spawn
- * budget, the population cap, which archetypes unlock, and enemy speed / toughness.
- * Every `waveEvery` seconds it stages a telegraphed set-piece wave.
+ * Round-based spawn director. Difficulty is a pure function of the round number; the
+ * player's power curve comes from the upgrades picked between rounds. A round lasts a
+ * fixed time, then ends as soon as its elites (every Nth round) are destroyed.
  */
 export class Director {
   constructor() {
@@ -24,36 +27,73 @@ export class Director {
   }
 
   reset() {
+    this.round = 0;
     this.time = 0;
-    this.budget = DIRECTOR.openingBudget;
-    this.threat = 0;
-    this.level = 1;
-    this.waveTimer = DIRECTOR.waveEvery;
-    this.waveCount = 0;
+    this.duration = ROUNDS.firstDuration;
+    this.budget = 0;
     this.queue = [];
     this.pending = null;
+    this.finished = false;
+    this.overtime = false;
+    this.setPieces = [];
+    this.eliteCount = 0;
+    this.eliteAt = Infinity;
+    this.eliteKind = null;
+    this.newKinds = [];
+  }
+
+  /** Prepare round `n` (1-based). Returns a description for the round intro. */
+  startRound(n) {
+    this.reset();
+    this.round = n;
+    this.duration = Math.min(ROUNDS.maxDuration, ROUNDS.firstDuration + ROUNDS.durationStep * (n - 1));
+    this.budget = ROUNDS.openingBudget + Math.min(6, this.k * 0.5);
+    this.newKinds = Object.keys(ENEMIES).filter((k) => ENEMIES[k].unlockRound === n);
+    if (n >= 2) this.setPieces.push(this.duration * rand(0.35, 0.55));
+    if (n >= 9) this.setPieces.push(this.duration * rand(0.72, 0.82));
+    if (n % ROUNDS.eliteEvery === 0) {
+      const kinds = ELITE_KINDS.filter((k) => ENEMIES[k].unlockRound <= n);
+      this.eliteKind = pick(kinds.length ? kinds : ['bulwark']);
+      this.eliteCount = 1 + Math.floor(n / 10);
+      this.eliteAt = Math.max(ROUNDS.grace + 1.5, this.duration * 0.18);
+    }
+    return { round: n, duration: this.duration, newKinds: this.newKinds, elite: this.eliteCount > 0 ? this.eliteKind : null };
+  }
+
+  /** Rounds completed before this one: the difficulty axis. */
+  get k() {
+    return Math.max(0, this.round - 1);
+  }
+
+  /** Legacy-style threat scalar used by a few enemy behaviours (sentry fire rate). */
+  get threat() {
+    return this.k * 0.7;
   }
 
   get speedMul() {
-    return 1 + DIRECTOR.speedPerThreat * Math.min(this.threat, DIRECTOR.speedThreatCap);
+    return 1 + ROUNDS.speedPerRound * Math.min(this.k, ROUNDS.speedRoundCap);
   }
 
   get hpMul() {
-    return 1 + DIRECTOR.hpPerThreat * this.threat;
+    const k = this.k;
+    return 1 + ROUNDS.hpLinear * k + ROUNDS.hpQuadratic * k * k;
   }
 
   get maxAlive() {
-    return Math.min(DIRECTOR.maxAliveCap, DIRECTOR.maxAliveBase + DIRECTOR.maxAlivePerThreat * this.threat);
+    return Math.min(ROUNDS.maxAliveCap, ROUNDS.maxAliveBase + ROUNDS.maxAlivePerRound * this.k);
+  }
+
+  get timeLeft() {
+    return Math.max(0, this.duration - this.time);
+  }
+
+  get progress() {
+    return Math.min(1, this.time / this.duration);
   }
 
   update(dt, game) {
+    if (this.finished || this.round === 0) return;
     this.time += dt;
-    this.threat = Math.sqrt(game.progress / DIRECTOR.progressDiv) + this.time / DIRECTOR.timeDiv;
-    const level = 1 + Math.floor(this.threat);
-    if (level > this.level) {
-      this.level = level;
-      game.onThreatLevel(level);
-    }
 
     for (let i = this.queue.length - 1; i >= 0; i--) {
       const q = this.queue[i];
@@ -64,10 +104,29 @@ export class Director {
       }
     }
 
-    if (this.time < DIRECTOR.graceTime) return;
+    if (this.time < ROUNDS.grace) return;
 
-    const rate = Math.min(DIRECTOR.budgetMax, DIRECTOR.budgetBase + DIRECTOR.budgetPerThreat * this.threat);
-    this.budget = Math.min(this.budget + rate * dt, 14);
+    if (this.eliteCount > 0 && this.time >= this.eliteAt) {
+      this._spawnElites(game);
+      this.eliteCount = 0;
+    }
+
+    const over = this.time >= this.duration;
+    if (over) {
+      // Time is up. Elite rounds go into overtime until every elite is destroyed.
+      if (game.elitesAlive() > 0) {
+        this.overtime = true;
+      } else {
+        this.finished = true;
+        this.queue.length = 0;
+        return;
+      }
+    }
+
+    const k = this.k;
+    const base = Math.min(ROUNDS.budgetMax, ROUNDS.budgetBase + ROUNDS.budgetPerRound * k);
+    const ramp = over ? 0.45 : 0.75 + 0.5 * this.progress; // each round builds to a climax
+    this.budget = Math.min(this.budget + base * ramp * dt, 14 + k);
     if (!this.pending) this.pending = this._pickGroup();
     const alive = game.enemies.count + this.queue.length;
     if (alive < this.maxAlive && this.budget >= this.pending.cost) {
@@ -76,19 +135,18 @@ export class Director {
       this.pending = null;
     }
 
-    this.waveTimer -= dt;
-    if (this.waveTimer <= 0) {
-      this.waveTimer = DIRECTOR.waveEvery;
-      this._launchWave(game);
+    if (!over && this.setPieces.length && this.time >= this.setPieces[0]) {
+      this.setPieces.shift();
+      this._launchSetPiece(game);
     }
   }
 
   _pickGroup() {
-    const t = this.threat;
+    const n = this.round;
     let total = 0;
     const options = [];
     for (const kind in GROUPS) {
-      if (ENEMIES[kind].unlock > t) continue;
+      if (ENEMIES[kind].unlockRound > n) continue;
       const w = GROUPS[kind].weight;
       options.push([kind, w]);
       total += w;
@@ -102,7 +160,7 @@ export class Director {
         break;
       }
     }
-    const size = GROUPS[kind].size(t);
+    const size = GROUPS[kind].size(this.k);
     return { kind, size, cost: size * ENEMIES[kind].cost };
   }
 
@@ -147,18 +205,20 @@ export class Director {
     }
   }
 
-  _launchWave(game) {
-    this.waveCount++;
-    const t = this.threat;
-    const types = ['swarm', 'pincer'];
-    if (t >= 1.5) types.push('lancers');
-    if (t >= 2.5) types.push('siege');
-    if (t >= 4) types.push('crossfire');
-    const type = pick(types);
-    const n = Math.floor(t);
+  _spawnElites(game) {
+    for (let i = 0; i < this.eliteCount; i++) {
+      const [x, y] = this._safeEdgePoint(game, 600);
+      game.spawnElite(this.eliteKind, x, y);
+    }
+  }
+
+  _launchSetPiece(game) {
+    const n = this.round;
+    const k = this.k;
+    const type = pick(SET_PIECES.filter(([, r]) => r <= n).map(([t]) => t));
     switch (type) {
       case 'swarm': {
-        const per = 3 + Math.min(8, n);
+        const per = 3 + Math.min(8, Math.floor(k * 0.8));
         for (let edge = 0; edge < 4; edge++) {
           for (let i = 0; i < per; i++) {
             const [x, y] = this._edgePoint(edge, (i + 0.5) / per);
@@ -169,18 +229,18 @@ export class Director {
       }
       case 'pincer': {
         const horizontal = Math.random() < 0.5;
-        const per = 4 + Math.min(7, n);
+        const per = 4 + Math.min(7, Math.floor(k * 0.7));
         for (const edge of horizontal ? [1, 3] : [0, 2]) {
           for (let i = 0; i < per; i++) {
             const [x, y] = this._edgePoint(edge, (i + 0.5) / per);
-            this._enqueue(i % 2 && t > 0.7 ? 'wisp' : 'dart', x, y, 0.35 + i * 0.08);
+            this._enqueue(i % 2 ? 'wisp' : 'dart', x, y, 0.35 + i * 0.08);
           }
         }
         break;
       }
       case 'lancers': {
         const corners = [[INSET, INSET], [ARENA.w - INSET, INSET], [INSET, ARENA.h - INSET], [ARENA.w - INSET, ARENA.h - INSET]];
-        const per = 1 + Math.min(2, Math.floor(n / 3));
+        const per = 1 + Math.min(2, Math.floor(k / 4));
         corners.forEach(([x, y], ci) => {
           for (let i = 0; i < per; i++) this._enqueue('lancer', x + rand(-30, 30), y + rand(-30, 30), 0.35 + ci * 0.12 + i * 0.1);
         });
@@ -188,25 +248,27 @@ export class Director {
       }
       case 'siege': {
         const edge = randInt(0, 3);
-        const tanks = 3 + Math.min(3, Math.floor(n / 3));
+        const tanks = 3 + Math.min(3, Math.floor(k / 4));
         for (let i = 0; i < tanks; i++) {
           const [x, y] = this._edgePoint(edge, (i + 0.5) / tanks);
           this._enqueue('bulwark', x, y, 0.35 + i * 0.1);
         }
         const [hx, hy] = this._edgePoint((edge + 2) % 4, 0.5);
-        this._enqueue('hive', hx, hy, 0.8);
-        this._enqueue('hive', hx + 90, hy, 0.9);
+        if (n >= ENEMIES.hive.unlockRound) {
+          this._enqueue('hive', hx, hy, 0.8);
+          this._enqueue('hive', hx + 90, hy, 0.9);
+        }
         break;
       }
       default: { // crossfire
         const corners = [[INSET, INSET], [ARENA.w - INSET, INSET], [INSET, ARENA.h - INSET], [ARENA.w - INSET, ARENA.h - INSET]];
         corners.forEach(([x, y], i) => this._enqueue('sentry', x, y, 0.35 + i * 0.12));
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 6 + Math.min(6, k - 5); i++) {
           const [x, y] = this._edgePoint(randInt(0, 3), rand(0.2, 0.8));
           this._enqueue('dart', x, y, 0.9 + i * 0.06);
         }
       }
     }
-    game.onWave(this.waveCount, type);
+    game.onSetPiece(type);
   }
 }

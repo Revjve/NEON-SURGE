@@ -1,5 +1,5 @@
-import { ARENA, ENEMIES, PALETTE } from '../config.js';
-import { rand, randSign, angleDiff, TAU, clamp } from '../core/math.js';
+import { ARENA, ENEMIES, PALETTE, ROUNDS } from '../config.js';
+import { rand, randSign, angleDiff, TAU, clamp, mixHex } from '../core/math.js';
 
 const SPAWN_TIME = 0.6;
 
@@ -8,7 +8,7 @@ class Enemy {
     this.active = false;
   }
 
-  init(kind, x, y, hpMul, speedMul) {
+  init(kind, x, y, hpMul, speedMul, elite = false) {
     const d = ENEMIES[kind];
     this.kind = kind;
     this.def = d;
@@ -16,11 +16,16 @@ class Enemy {
     this.y = y;
     this.vx = 0;
     this.vy = 0;
-    this.radius = d.radius;
-    this.maxHp = Math.max(1, Math.round(d.hp * (kind === 'mite' || kind === 'dart' ? 1 : hpMul)));
+    this.elite = elite;
+    // HP is fractional: damage mods produce fractional hits. `hpScale` lets fodder scale
+    // slower than heavies so early swarms stay one-shot-ish for a few rounds.
+    const scaled = d.hp * (1 + (hpMul - 1) * d.hpScale);
+    this.maxHp = elite ? (d.hp + 6) * hpMul * ROUNDS.eliteHp : scaled;
     this.hp = this.maxHp;
-    this.speed = d.speed * speedMul;
-    this.mass = d.mass;
+    this.radius = d.radius * (elite ? ROUNDS.eliteSize : 1);
+    this.speed = d.speed * speedMul * (elite ? 0.85 : 1);
+    this.mass = d.mass * (elite ? 5 : 1);
+    this.dieCause = 'cascade';
     this.age = 0;
     this.spawn = SPAWN_TIME;
     this.flash = 0;
@@ -51,9 +56,10 @@ function steer(e, dx, dy, speed, response, dt) {
 }
 
 export class Enemies {
-  constructor(capacity = 260) {
+  constructor(capacity = 280) {
     this.pool = Array.from({ length: capacity }, () => new Enemy());
     this.list = [];
+    this.near = [];
   }
 
   get count() {
@@ -65,10 +71,10 @@ export class Enemies {
     this.list.length = 0;
   }
 
-  spawn(kind, x, y, hpMul = 1, speedMul = 1) {
+  spawn(kind, x, y, hpMul = 1, speedMul = 1, elite = false) {
     const e = this.pool.find((p) => !p.active);
     if (!e) return null;
-    e.init(kind, clamp(x, 30, ARENA.w - 30), clamp(y, 30, ARENA.h - 30), hpMul, speedMul);
+    e.init(kind, clamp(x, 30, ARENA.w - 30), clamp(y, 30, ARENA.h - 30), hpMul, speedMul, elite);
     this.list.push(e);
     return e;
   }
@@ -96,7 +102,7 @@ export class Enemies {
         e.vy *= Math.exp(-4 * dt);
         e.x += e.vx * dt;
         e.y += e.vy * dt;
-        if (e.dying <= 0) game.killEnemy(e, 'cascade');
+        if (e.dying <= 0) game.killEnemy(e, e.dieCause);
         continue;
       }
       if (e.spawn > 0) {
@@ -122,7 +128,7 @@ export class Enemies {
   _separate(hash) {
     for (const a of this.list) {
       if (a.spawn > 0) continue;
-      const near = hash.query(a.x, a.y, a.radius + 48);
+      const near = hash.query(a.x, a.y, a.radius + 80, this.near);
       for (let k = 0; k < near.length; k++) {
         const b = near[k];
         if (b === a || b.spawn > 0 || !b.active) continue;
@@ -145,7 +151,10 @@ export class Enemies {
   }
 
   draw(layer, time) {
-    for (const e of this.list) DRAW[e.kind](layer, e, time);
+    for (const e of this.list) {
+      DRAW[e.kind](layer, e, time);
+      if (e.elite) drawElite(layer, e, time);
+    }
   }
 }
 
@@ -176,14 +185,15 @@ const BEHAVIOR = {
         const by = e.y - b.y;
         const d2 = bx * bx + by * by;
         if (d2 > 150 * 150) continue;
-        const along = (bx * b.vx + by * b.vy) / 1650;
+        const sp = b.speed || 1650;
+        const along = (bx * b.vx + by * b.vy) / sp;
         if (along <= 0) continue;
-        const perp = Math.abs(bx * b.vy - by * b.vx) / 1650;
+        const perp = Math.abs(bx * b.vy - by * b.vx) / sp;
         if (perp < 38) {
           // Side-step away from the bolt's line of travel.
           const s = (bx * b.vy - by * b.vx) > 0 ? -1 : 1;
-          e.vx += (-b.vy / 1650) * s * 520;
-          e.vy += (b.vx / 1650) * s * 520;
+          e.vx += (-b.vy / sp) * s * 520;
+          e.vy += (b.vx / sp) * s * 520;
           e.dodgeT = 0.45;
           break;
         }
@@ -310,7 +320,7 @@ const BEHAVIOR = {
     e.charge = e.fireT < 0.5 ? 1 - e.fireT / 0.5 : 0;
     if (e.fireT <= 0 && game.player.alive) {
       e.fireT = (e.def.fireInterval / (1 + game.director.threat * 0.05)) * rand(0.85, 1.2);
-      const spread = game.director.threat > 6 ? [-0.22, 0, 0.22] : [0];
+      const spread = e.elite ? [-0.44, -0.22, 0, 0.22, 0.44] : game.director.threat > 6 ? [-0.22, 0, 0.22] : [0];
       const speed = 330 + Math.min(150, game.director.threat * 14);
       const nose = e.radius + 8;
       const ox = e.x + Math.cos(e.angle) * nose;
@@ -331,14 +341,33 @@ function body(layer, e, shape, rot, scale = 1) {
   const c = e.def.color;
   const spawning = e.spawn > 0 ? e.spawn / SPAWN_TIME : 0;
   const appear = 1 - spawning;
-  const r = e.radius * scale * (1 + spawning * 2.2);
+  const r = e.radius * scale * (1 + spawning * (e.elite ? 0.7 : 2.2));
   const flicker = spawning > 0 ? 0.55 + 0.45 * Math.sin(e.spawn * 60) : 1;
-  const hit = e.flash > 0 ? 1 : 0;
-  const tint = hit ? PALETTE.white : c;
-  layer.sprite('glow', e.x, e.y, 0, r * 2.3, c, (0.32 + hit * 0.4) * appear * flicker);
+  // Elites soak constant fire, so their hit flash is a tint pulse rather than a white-out.
+  const hit = e.flash > 0 ? (e.elite ? 0.3 : 1) : 0;
+  const tint = hit ? (e.elite ? mixHex(c, PALETTE.white, 0.45) : PALETTE.white) : c;
+  // Big bodies spread their glow over more pixels, so dim the halo as they grow.
+  const halo = e.elite ? 0.55 : 1;
+  layer.sprite('glow', e.x, e.y, 0, r * 2.3, c, (0.32 + hit * 0.4) * appear * flicker * halo);
   layer.sprite(`${shape}Glow`, e.x, e.y, rot, r * 1.06, c, (0.95 + hit) * appear * flicker);
   layer.sprite(shape, e.x, e.y, rot, r, tint, (2.1 + hit * 2) * flicker * (0.35 + appear * 0.65));
   return r;
+}
+
+/** Elite crown: rotating gold halo and a health bar. */
+function drawElite(layer, e, time) {
+  if (e.dying > 0) return;
+  const gold = PALETTE.flux;
+  const appear = e.spawn > 0 ? 1 - e.spawn / SPAWN_TIME : 1;
+  const r = e.radius;
+  const pulse = 0.75 + 0.25 * Math.sin(time * 5 + e.seed);
+  layer.sprite('ringThin', e.x, e.y, time * 0.8, r * 1.45, gold, 0.9 * pulse * appear);
+  layer.sprite('glow', e.x, e.y, 0, r * 3.2, gold, 0.18 * appear);
+  const w = r * 1.6;
+  const y = e.y - r - 22;
+  const f = Math.max(0, e.hp / e.maxHp);
+  layer.line(e.x - w / 2, y, e.x + w / 2, y, 4, 0x402a10, 0.8 * appear);
+  if (f > 0) layer.line(e.x - w / 2, y, e.x - w / 2 + w * f, y, 4, e.flash > 0 ? PALETTE.white : gold, 2.2 * appear);
 }
 
 const DRAW = {
@@ -368,7 +397,8 @@ const DRAW = {
     const r = body(layer, e, 'bulwark', e.spin);
     const flick = lowHp < 0.4 ? 0.6 + 0.4 * Math.sin(time * 30 + e.seed) : 1;
     layer.sprite('bulwarkCoreGlow', e.x, e.y, -e.spin * 2.2, r * 1.05, e.def.color, 0.9 * flick);
-    layer.sprite('bulwarkCore', e.x, e.y, -e.spin * 2.2, r, e.flash > 0 ? PALETTE.white : 0xffd29a, (1.7 + (1 - lowHp) * 1.2) * flick);
+    const coreHit = e.flash > 0 && !e.elite;
+    layer.sprite('bulwarkCore', e.x, e.y, -e.spin * 2.2, r, coreHit ? PALETTE.white : 0xffd29a, (1.7 + (1 - lowHp) * (e.elite ? 0.5 : 1.2)) * flick);
   },
 
   hive(layer, e) {

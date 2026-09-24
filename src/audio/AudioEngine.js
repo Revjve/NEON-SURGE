@@ -501,6 +501,139 @@ export class AudioEngine {
     });
   }
 
+  // --- upgrade / roguelite sounds --------------------------------------------------------
+
+  /** VOLATILE ROUNDS blast: a punchy mid-range thump, lighter than an enemy death. */
+  blast(pan = 0, gen = 0) {
+    if (!this._ok('blast', 45)) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const out = this._voice(pan * 0.55, 0.1);
+    const o = this._osc('sine', 190 - gen * 12, t);
+    o.frequency.exponentialRampToValueAtTime(48, t + 0.16);
+    const og = ctx.createGain();
+    this._env(og.gain, t, 0.42, 0.003, 0.18);
+    o.connect(og);
+    og.connect(out);
+    o.start(t);
+    o.stop(t + 0.25);
+    const n = this._noiseSrc(t, rand(0.8, 1.1));
+    const sh = ctx.createWaveShaper();
+    sh.curve = this.crunchCurve;
+    const lp = this._filter('lowpass', 4200, 0.8);
+    lp.frequency.exponentialRampToValueAtTime(260, t + 0.16);
+    const ng = ctx.createGain();
+    this._env(ng.gain, t, 0.22, 0.002, 0.15);
+    n.connect(sh);
+    sh.connect(lp);
+    lp.connect(ng);
+    ng.connect(out);
+    n.stop(t + 0.22);
+  }
+
+  /** ARC COIL crackle. */
+  zap(pan = 0) {
+    if (!this._ok('zap', 40)) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const out = this._voice(pan * 0.6, 0.08);
+    const n = this._noiseSrc(t, 1.6);
+    const bp = this._filter('bandpass', rand(3200, 5200), 3);
+    const g = ctx.createGain();
+    this._env(g.gain, t, 0.12, 0.001, 0.07);
+    n.connect(bp);
+    bp.connect(g);
+    g.connect(out);
+    n.stop(t + 0.1);
+    const o = this._osc('sawtooth', rand(1400, 2100), t);
+    o.frequency.exponentialRampToValueAtTime(380, t + 0.06);
+    const og = ctx.createGain();
+    this._env(og.gain, t, 0.035, 0.001, 0.06);
+    o.connect(og);
+    og.connect(out);
+    o.start(t);
+    o.stop(t + 0.08);
+  }
+
+  /** OVERCHARGE crit: bright metallic ping. */
+  crit(pan = 0) {
+    if (!this._ok('crit', 55)) return;
+    const t = this.ctx.currentTime;
+    const out = this._voice(pan * 0.6, 0.2);
+    for (const [f, peak] of [[2637, 0.06], [3951, 0.035]]) {
+      const o = this._osc('triangle', f * rand(0.98, 1.02), t);
+      const g = this.ctx.createGain();
+      this._env(g.gain, t, peak, 0.001, 0.14);
+      o.connect(g);
+      g.connect(out);
+      o.start(t);
+      o.stop(t + 0.18);
+    }
+  }
+
+  /** RICOCHET wall bounce. */
+  ping(pan = 0) {
+    if (!this._ok('ping', 40)) return;
+    const t = this.ctx.currentTime;
+    const out = this._voice(pan * 0.7, 0.05);
+    const o = this._osc('sine', rand(1500, 1900), t);
+    o.frequency.exponentialRampToValueAtTime(2600, t + 0.05);
+    const g = this.ctx.createGain();
+    this._env(g.gain, t, 0.045, 0.001, 0.06);
+    o.connect(g);
+    g.connect(out);
+    o.start(t);
+    o.stop(t + 0.08);
+  }
+
+  shieldBlock() {
+    if (!this._ok('shield', 120)) return;
+    this._sweep('triangle', 520, 1560, 0.28, 0.12, 0, null);
+    this._sweep('sine', 180, 60, 0.35, 0.3, 0, this.softCurve);
+    this._arpeggio([79, 86, 91], 0.045, 'sine', 0.06, 0.5);
+  }
+
+  /** Wave cleared: rising major sweep + sub drop under the purge nova. */
+  roundClear() {
+    if (!this._ok('roundClear', 400)) return;
+    this.gates.delete('explode');
+    this.explode(2.2, 0);
+    this._arpeggio([67, 71, 74, 79, 83, 86], 0.055, 'square', 0.07, 0.6);
+    this._sweep('sawtooth', 110, 880, 0.5, 0.05, 0, null);
+    this.music?.duck(0.7);
+  }
+
+  purchase() {
+    this._arpeggio([84, 88, 91, 96], 0.05, 'triangle', 0.1, 0.4);
+  }
+
+  denied() {
+    if (!this._ok('denied', 120)) return;
+    this._sweep('square', 190, 120, 0.16, 0.06, 0, this.softCurve);
+  }
+
+  /** Reward counter tick; pitch rises with progress 0..1. */
+  tally(progress = 0) {
+    if (!this._ok('tally', 45)) return;
+    const t = this.ctx.currentTime;
+    const out = this._voice(0, 0.05);
+    const o = this._osc('square', 900 * Math.pow(2, progress * 1.2), t);
+    const f = this._filter('lowpass', 4000);
+    const g = this.ctx.createGain();
+    this._env(g.gain, t, 0.03, 0.001, 0.035);
+    o.connect(f);
+    f.connect(g);
+    g.connect(out);
+    o.start(t);
+    o.stop(t + 0.05);
+  }
+
+  /** An upgrade card was picked; rarer cards ring brighter. */
+  pick(rarity = 'common') {
+    const notes = rarity === 'epic' ? [72, 79, 84, 88, 91, 96] : rarity === 'rare' ? [72, 76, 83, 88] : [72, 79, 84];
+    this._arpeggio(notes, 0.05, rarity === 'epic' ? 'sawtooth' : 'square', 0.075, 0.55);
+  }
+
   ui(kind = 'move') {
     if (!this._ok('ui', 30)) return;
     const t = this.ctx.currentTime;

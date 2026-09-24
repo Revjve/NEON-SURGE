@@ -21,34 +21,51 @@ export const PALETTE = {
   surge: 0x8f6bff,
   danger: 0xff2255,
   white: 0xffffff,
-  bulletByLevel: [0x78f5ff, 0x9dfbff, 0xc9fbff, 0xfff1a8, 0xffd0f5],
+  bullet: 0x78f5ff,
+  purge: 0xffd66b,
+  repair: 0x7dff9a,
+  arc: 0xb49dff,
+  rarity: { common: 0x3ef2ff, rare: 0xb36bff, epic: 0xffc94a },
 };
 
 export const PLAYER = {
   hitRadius: 12,
   size: 34, // visual half-size in world units
-  maxSpeed: 560,
   response: 13, // velocity smoothing (higher = snappier)
-  lives: 3,
-  maxLives: 5,
-  invulnTime: 2.6,
-  // Bonus ships at progress 15k, 45k, 90k, 150k... (gaps grow by this step each time)
-  extraLifeStep: 15000,
+  invulnTime: 2.2, // after losing hull
+  shieldInvuln: 1.0, // after a Deflector charge absorbs a hit
 };
 
-export const WEAPON = {
+// Base loadout before permanent (meta) and in-run (upgrade) modifiers. Stats are always
+// recomputed from this table, so upgrades stack deterministically in any order.
+export const BASE_STATS = {
+  maxHull: 3,
+  moveSpeed: 560,
+  fireRate: 8.5, // volleys per second
+  projectiles: 1, // bolts per volley
+  damage: 1,
   bulletSpeed: 1650,
-  bulletLife: 0.95,
-  bulletRadius: 7,
-  // Progress thresholds (un-multiplied kill value) unlock stronger patterns.
-  // pattern entries: [angleDeg, lateralOffset]
-  levels: [
-    { progress: 0, rate: 10, pierce: 0, pattern: [[0, 0]] },
-    { progress: 1500, rate: 11, pierce: 0, pattern: [[0, -7], [0, 7]] },
-    { progress: 5000, rate: 12, pierce: 0, pattern: [[-4.5, 0], [0, 0], [4.5, 0]] },
-    { progress: 12000, rate: 13, pierce: 0, pattern: [[-7.5, 0], [0, -7], [0, 7], [7.5, 0]] },
-    { progress: 25000, rate: 14, pierce: 1, pattern: [[-11, 0], [-5.5, 0], [0, 0], [5.5, 0], [11, 0]] },
-  ],
+  range: 1550, // world units a bolt travels before fizzling
+  bulletSize: 1,
+  pierce: 0,
+  bounces: 0,
+  explosive: 0,
+  cascade: 0,
+  chain: 0,
+  critChance: 0,
+  critMult: 2.5,
+  homing: 0,
+  shrapnel: 0,
+  drones: 0,
+  shield: 0, // hits absorbed per wave
+  repair: 0, // hull repaired after each wave
+  magnet: 190,
+  fluxBonus: 0, // extra flux drop chance
+  surgeGain: 1,
+  startSurge: 0,
+  shardMul: 1,
+  rerolls: 0,
+  luck: 0,
 };
 
 export const SURGE = {
@@ -64,55 +81,63 @@ export const FLUX = {
   maxMultiplier: 99,
 };
 
-// Enemy archetypes. `cost` is spent from the director's spawn budget.
+// Enemy archetypes. `cost` is spent from the director's spawn budget; `hpScale` controls
+// how strongly the per-round HP multiplier applies (fodder scales slower). Darts start just
+// under one bolt of damage: they stay one-shot for the first waves, and damage upgrades
+// are what keep them one-shot later (a satisfying breakpoint to chase).
 export const ENEMIES = {
   dart: {
-    label: 'DART', color: 0xff2bd6, radius: 21, hp: 1, speed: 285, accel: 1150,
-    score: 50, flux: 0.5, cost: 1, mass: 1, surge: 0.007, unlock: 0,
+    label: 'DART', color: 0xff2bd6, radius: 21, hp: 0.8, speed: 285, accel: 1150,
+    score: 50, flux: 0.5, cost: 1, mass: 1, surge: 0.007, unlockRound: 1, hpScale: 0.6,
   },
   wisp: {
     label: 'WISP', color: 0x4d8bff, radius: 20, hp: 2, speed: 235, accel: 900,
-    score: 100, flux: 0.6, cost: 1.5, mass: 0.8, surge: 0.009, unlock: 0.7,
+    score: 100, flux: 0.6, cost: 1.5, mass: 0.8, surge: 0.009, unlockRound: 2, hpScale: 0.9,
   },
   lancer: {
     label: 'LANCER', color: 0xc6ff2e, radius: 23, hp: 3, speed: 150, accel: 700,
-    dashSpeed: 1250, score: 175, flux: 1, cost: 2.5, mass: 1.2, surge: 0.013, unlock: 1.5,
+    dashSpeed: 1250, score: 175, flux: 1, cost: 2.5, mass: 1.2, surge: 0.013, unlockRound: 3, hpScale: 1,
   },
   bulwark: {
     label: 'BULWARK', color: 0xff7a1a, radius: 44, hp: 14, speed: 82, accel: 260,
-    score: 350, flux: 3, cost: 4.5, mass: 7, surge: 0.035, unlock: 2.2,
+    score: 350, flux: 3, cost: 4.5, mass: 7, surge: 0.035, unlockRound: 4, hpScale: 1,
   },
   hive: {
     label: 'HIVE', color: 0xa45cff, radius: 32, hp: 5, speed: 118, accel: 420,
-    score: 200, flux: 1, cost: 3, mass: 2.5, surge: 0.013, unlock: 3.0, splits: 4,
+    score: 200, flux: 1, cost: 3, mass: 2.5, surge: 0.013, unlockRound: 5, hpScale: 1, splits: 4,
   },
   mite: {
-    label: 'MITE', color: 0xe07bff, radius: 13, hp: 1, speed: 360, accel: 1400,
-    score: 25, flux: 0.2, cost: 0, mass: 0.6, surge: 0.003, unlock: Infinity,
+    label: 'MITE', color: 0xe07bff, radius: 13, hp: 0.6, speed: 360, accel: 1400,
+    score: 25, flux: 0.2, cost: 0, mass: 0.6, surge: 0.003, unlockRound: Infinity, hpScale: 0.5,
   },
   sentry: {
     label: 'SENTRY', color: 0xff2d55, radius: 29, hp: 7, speed: 165, accel: 500,
-    score: 300, flux: 2, cost: 4, mass: 3, surge: 0.025, unlock: 3.8, fireInterval: 2.3,
+    score: 300, flux: 2, cost: 4, mass: 3, surge: 0.025, unlockRound: 6, hpScale: 1, fireInterval: 2.3,
   },
 };
 
-export const DIRECTOR = {
-  graceTime: 1.5, // quiet seconds at the start of a run
-  openingBudget: 3.5, // budget banked at the start so the first pack arrives immediately
-  // threat = sqrt(progress / progressDiv) + time / timeDiv, where progress is the
-  // un-multiplied value of every kill (so it tracks score without exploding with it).
-  progressDiv: 3000,
-  timeDiv: 100,
-  budgetBase: 2.0,
-  budgetPerThreat: 0.85,
-  budgetMax: 15,
-  maxAliveBase: 26,
-  maxAlivePerThreat: 11,
-  maxAliveCap: 180,
-  speedPerThreat: 0.05,
-  speedThreatCap: 14,
-  hpPerThreat: 0.14,
-  waveEvery: 30, // seconds between set-piece waves
+// Timed rounds. Difficulty is a function of the round number only; the player's power
+// comes from the upgrades picked between rounds.
+export const ROUNDS = {
+  firstDuration: 25, // seconds
+  durationStep: 2,
+  maxDuration: 45,
+  grace: 1.2, // quiet seconds at the start of each round
+  openingBudget: 3.5,
+  budgetBase: 1.6, // spawn budget per second in round 1
+  budgetPerRound: 0.6,
+  budgetMax: 14,
+  maxAliveBase: 20,
+  maxAlivePerRound: 7.5,
+  maxAliveCap: 170,
+  speedPerRound: 0.035,
+  speedRoundCap: 14,
+  hpLinear: 0.14, // enemy HP x (1 + a*k + b*k^2), k = round - 1
+  hpQuadratic: 0.012,
+  eliteEvery: 5, // every Nth round has an elite that must die before the round ends
+  eliteHp: 4, // elite HP = (base hp + 6) x round HP multiplier x this
+  eliteSize: 1.75,
+  clearTime: 1.8, // round-clear celebration before the upgrade screen
 };
 
 export const QUALITY = {
@@ -123,5 +148,6 @@ export const QUALITY = {
 
 export const STORAGE_KEYS = {
   settings: 'neon-surge.settings.v1',
-  best: 'neon-surge.best.v1',
+  meta: 'neon-surge.meta.v1',
+  legacyBest: 'neon-surge.best.v1', // high score from the pre-roguelite build (migrated once)
 };

@@ -130,6 +130,10 @@ const SHAPES = {
     { pts: [[34, 0], [46, 0]], close: false, w: 1.1 },
   ],
   flux: [{ pts: [[40, 0], [0, 26], [-40, 0], [0, -26]], w: 1.6, fill: 0.35 }],
+  drone: [
+    { pts: [[40, 0], [0, 22], [-24, 0], [0, -22]], w: 1.4, fill: 0.18 },
+    { pts: [[40, 0], [8, 0]], close: false, w: 0.9 },
+  ],
   shield: [{ pts: regular(6, 40, Math.PI / 6), w: 0.55 }],
   reticle: [
     { circle: [0, 0, 22], w: 0.7 },
@@ -152,7 +156,6 @@ export class Atlas {
     this.frames = {};
     /** Reference radius (px) of each frame, used to scale sprites to world sizes. */
     this.ref = {};
-    this.glyphs = {};
     this.texture = null;
   }
 
@@ -170,7 +173,9 @@ export class Atlas {
     this.ref[name] = ref;
   }
 
-  build(fontFamily = 'Orbitron') {
+  // No text is ever painted here: all lettering (HUD, menus, combat numbers) is crisp
+  // HTML in the #ui-layer overlay.
+  build() {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, SIZE, SIZE);
 
@@ -261,23 +266,6 @@ export class Atlas {
         c.translate(SHAPE / 2, SHAPE / 2);
         shadowOnly(c, 16, 1, (k) => strokePaths(k, paths, 11));
       });
-    }
-
-    // Glyphs for in-world score popups -----------------------------------------------
-    const glyphs = '0123456789+x';
-    ctx.font = `900 52px ${fontFamily}, "Arial Black", Arial, sans-serif`;
-    for (const ch of glyphs) {
-      const advance = Math.ceil(ctx.measureText(ch).width);
-      const w = advance + 16;
-      this._add(`glyph_${ch}`, w, 72, 36, (c) => {
-        c.font = `900 52px ${fontFamily}, "Arial Black", Arial, sans-serif`;
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        shadowOnly(c, 8, 0.85, (k) => { k.fillStyle = '#fff'; k.fillText(ch, w / 2, 38); });
-        c.fillStyle = '#fff';
-        c.fillText(ch, w / 2, 38);
-      });
-      this.glyphs[ch] = advance;
     }
 
     const source = new CanvasSource({

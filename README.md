@@ -1,17 +1,21 @@
 # NEON SURGE
 
-A fast-paced twin-stick survival shooter. You pilot a glowing ship on a warping
-neon grid while swarms of geometric enemies close in from every edge. It runs in the
-browser (itch.io HTML5) and ships as a native Windows `.exe` through Electron.
+A fast-paced twin-stick **roguelite** shooter. You pilot a glowing ship on a warping neon
+grid while swarms of geometric enemies close in from every edge. Survive timed waves, pick
+one of three stackable upgrades after each one, and when your hull finally breaks, spend
+the run's **Neon Shards** in the Hangar on permanent upgrades. It runs in the browser
+(itch.io HTML5) and ships as a native Windows `.exe` through Electron.
 
 ![Title screen](docs/title.jpg)
-![Combat](docs/combat.jpg)
-![Surge detonation](docs/surge.jpg)
+![Combat with a Split Barrel + Volatile Rounds build](docs/combat.jpg)
+![Choosing an upgrade between waves](docs/upgrade.jpg)
+![Hangar: run rewards and the permanent upgrade shop](docs/hangar.jpg)
 
 **Stack:** HTML5, modular ES6 JavaScript, **PixiJS 8.21** (WebGL 2) loaded from the jsDelivr
 CDN with a bundled offline fallback, custom GLSL post-processing, and the Web Audio API.
 There are no image or sound files: every sprite is painted procedurally and every sound
-is synthesized at runtime.
+is synthesized at runtime. All text (HUD, menus, upgrade cards, shop, combat numbers) is
+crisp HTML in a DOM layer over the canvas; the WebGL canvas never draws text.
 
 ---
 
@@ -19,13 +23,13 @@ is synthesized at runtime.
 
 ```
 NEON-SURGE/
-├── index.html                 Web entry point (the root of the itch.io zip)
+├── index.html                 Web entry point + the #ui-layer DOM (HUD, all screens)
 ├── css/
-│   └── style.css              HUD, menus, overlays, desktop title bar
+│   └── style.css              UI layer: HUD, menus, upgrade cards, Hangar, combat text
 ├── src/
 │   ├── boot.js                Boot sequence, wiring, main loop
 │   ├── preflight.js           Classic script: shows boot errors on screen (file:// hint etc.)
-│   ├── config.js              Every tuning value: arena, weapons, enemies, director, quality
+│   ├── config.js              Every tuning value: base stats, enemies, rounds, quality
 │   ├── lib/
 │   │   └── pixi.js            Loads PixiJS from jsDelivr, falls back to /vendor (offline/desktop)
 │   ├── core/
@@ -36,29 +40,34 @@ NEON-SURGE/
 │   │   ├── shaders.js         All GLSL ES 3.00 programs
 │   │   ├── WarpGrid.js        Spring-mass lattice (physics + GPU mesh + dynamic lights)
 │   │   ├── GlowLayer.js       HDR additive sprite batch (ParticleContainer + custom shader)
-│   │   ├── Atlas.js           Procedural sprite atlas (shapes, glows, sparks, glyphs)
+│   │   ├── Atlas.js           Procedural sprite atlas (shapes, glows, sparks; no text)
 │   │   ├── Backdrop.js        Nebula + parallax starfield
 │   │   └── Trail.js           Engine plasma ribbon
 │   ├── fx/
-│   │   ├── Effects.js         "Juice" API: explosions, impacts, surge nova, player death
+│   │   ├── Effects.js         "Juice" API: explosions, blasts, arcs, crits, novas, death
 │   │   ├── Particles.js       Struct-of-arrays particle sim (bounce, stretch, spin, flicker)
-│   │   ├── Camera.js          Trauma shake, directional kick, zoom punch
+│   │   ├── Camera.js          Trauma shake, directional kick, zoom punch, world->screen
 │   │   ├── Lights.js          Short-lived point lights that illuminate the grid
 │   │   ├── Shockwaves.js      Screen-space refraction rings
-│   │   └── Popups.js          Floating score numbers
+│   │   └── Arcs.js            Crackling lightning arcs (Arc Coil upgrade)
 │   ├── game/
-│   │   ├── Game.js            State machine, combat, scoring, hit-stop, slow-mo, rendering
-│   │   ├── Player.js          Ship movement, aiming, weapon patterns
-│   │   ├── Bullets.js         Plasma bolts (swept collision) + enemy orbs
-│   │   ├── Enemies.js         Six enemy archetypes: behaviours + visuals
-│   │   ├── Director.js        Spawning, threat scaling, set-piece waves
+│   │   ├── Game.js            State machine (waves/upgrade/hangar), damage pipeline, rendering
+│   │   ├── Upgrades.js        20 stackable upgrades, stat builder, shot profile, offer roller
+│   │   ├── Meta.js            Neon Shards, Hangar shop, rewards, validated localStorage save
+│   │   ├── Director.js        Timed rounds: spawn budget, set pieces, elites
+│   │   ├── Player.js          Ship movement, aiming, multishot volleys
+│   │   ├── Bullets.js         Bolts (bounce, pierce, homing, swept collision) + enemy orbs
+│   │   ├── Enemies.js         Six archetypes + elite variants: behaviours + visuals
+│   │   ├── Drones.js          Guardian Drone satellites
 │   │   ├── Flux.js            Multiplier pickups
 │   │   └── SpatialHash.js     Collision broadphase
 │   ├── audio/
 │   │   ├── AudioEngine.js     Synth SFX, reverb, compressor, muffle filter
 │   │   └── Music.js           Generative synthwave sequencer (adaptive layers)
 │   └── ui/
-│       ├── UI.js              Screens, HUD, announcements, settings, gamepad menus
+│       ├── UI.js              DOM layer: screens, HUD, upgrade cards, Hangar, gamepad menus
+│       ├── FloatText.js       Pooled DOM combat numbers that follow the camera and its shake
+│       ├── icons.js           Inline SVG icons for upgrades, chips and the shop
 │       └── settings.js        Persistent settings (localStorage)
 ├── vendor/
 │   ├── pixi.min.mjs           PixiJS 8.21.0 ESM build (same file the CDN serves)
@@ -199,17 +208,105 @@ Notes:
 | Aim | Mouse | Right stick |
 | Fire | Left click (hold) | Right stick / RT |
 | Surge (screen-clearing nova) | `Space` / right click | LB / A |
+| Pick an upgrade | Click a card / `1` `2` `3` | D-pad + A |
+| Reroll the offer | `R` / the Reroll button | Y |
 | Pause | `Esc` / `P` | Start |
 | Mute / Fullscreen | `M` / `F` (`F11` on desktop) | — |
 
-Kills drop **gold flux**; collecting it raises your multiplier (up to ×99). Getting hit
-costs a ship and resets the multiplier. Kills charge **SURGE**. Progress unlocks weapon
-tiers MK I–V and bonus ships, but it also makes the swarm faster, tougher and more numerous.
+---
+
+## How a run works
+
+1. **Timed waves.** Each wave lasts 25 s, growing by 2 s per wave up to 45 s. Survive until
+   the timer runs out: a golden purge nova clears the arena and vacuums up your flux. Every
+   5th wave spawns a crowned **elite** (an armoured heavy with a health bar); that wave
+   doesn't end until every elite is dead. Difficulty depends only on the wave number (spawn
+   budget, population cap, enemy speed and HP). There is no more score-driven scaling.
+2. **Pick 1 of 3 upgrades.** The game freezes and offers three random cards weighted by
+   rarity (common / rare / epic). Cards that combine with what you already own show up
+   more often, and at least one weapon card is always offered. The card shows the stat
+   change (`1 BOUNCE → 2 BOUNCES`), level pips and the synergy it enables.
+3. **Die, bank, upgrade.** When your hull breaks (or you abandon the run from the pause
+   menu), the run pays out **Neon Shards** and you land in the **Hangar**: a run summary
+   with an itemised reward breakdown next to the permanent upgrade shop.
+
+**Shards per run** = survival seconds × 0.4 + waves cleared × 8 + √score × 0.08 + 15 per
+elite (+ Shard Caches), all multiplied by the Shard Siphon multiplier. The HUD shows the
+running total (`◆ +126`).
+
+### Stackable upgrades (in-run)
+
+Every upgrade is a pure modifier on a stats table that is **rebuilt from scratch** (base
+stats → Hangar levels → upgrade stacks, in a fixed order) whenever your build changes. All
+bullet behaviour is then baked into one shared **shot profile** that every projectile you
+own references: main-gun bolts, multishot extras, drone bolts and shrapnel. That's what makes
+the stacking real. With **Split Barrel + Volatile Rounds**, every extra bolt explodes. With
+**Fragmentation**, the shards pierce, bounce, arc, crit and explode as well. With **Chain
+Reaction**, kills from those blasts detonate again.
+
+| Upgrade | Rarity | Max | Effect per stack |
+| --- | --- | --- | --- |
+| Split Barrel | rare | 6 | +1 bolt per volley (fan) |
+| Overclock | common | 8 | +20% fire rate |
+| Plasma Core | common | 8 | +25% damage |
+| Volatile Rounds | rare | 4 | projectile kills explode (AoE); stacks grow radius + damage |
+| Ricochet | common | 4 | +1 wall bounce, +30% range |
+| Phase Rounds | common | 5 | pierce +1 enemy |
+| Rail Accelerator | common | 4 | +25% bolt speed, +20% range, +10% damage |
+| Heavy Caliber | common | 3 | +35% bolt size, +25% damage, −6% fire rate |
+| Arc Coil | rare | 4 | hits arc to +1 nearby enemy for 50% damage |
+| Overcharge | common | 5 | +10% crit chance, +25% crit damage |
+| Seeker Guidance | rare | 3 | bolts home in on enemies |
+| Fragmentation | epic | 3 | kills burst into shards that inherit every mod |
+| Chain Reaction | epic | 1 | blast kills detonate too (needs Volatile Rounds) |
+| Guardian Drone | epic | 3 | +1 orbiting drone firing your bolts (60% damage) |
+| Hull Plating | common | 5 | +1 max hull, repair 1 |
+| Nanite Swarm | rare | 2 | repair +1 hull after every wave |
+| Deflector | rare | 2 | +1 shield charge per wave (absorbs a hit) |
+| Afterburners | common | 4 | +12% move speed |
+| Flux Magnet | common | 3 | +60% pickup range, +25% flux drops |
+| Surge Capacitor | common | 4 | Surge charges 35% faster |
+
+### Hangar (permanent upgrades)
+
+| Upgrade | Levels | Effect per level | First cost |
+| --- | --- | --- | --- |
+| Reinforced Hull | 5 | +1 base max hull | 60 |
+| Plasma Tuning | 10 | +10% base damage | 40 |
+| Thruster Tuning | 6 | +5% base move speed | 35 |
+| Cyclic Rate | 8 | +6% base fire rate | 45 |
+| Shard Siphon | 8 | +15% Neon Shards (currency multiplier) | 50 |
+| Surge Primer | 5 | start with +20% Surge, +10% Surge gain | 40 |
+| Reroll Matrix | 3 | +1 upgrade reroll per run | 90 |
+| Fortune Engine | 5 | rare and epic cards appear more often | 70 |
+
+Costs grow geometrically per level (`src/game/Meta.js`, `SHOP`).
+
+### Save data
+
+Progress lives in `localStorage` under `neon-surge.meta.v1` (settings are stored separately
+under `neon-surge.settings.v1`). The save code (`Meta.js`) is defensive:
+
+- **Availability probe:** if storage is missing or blocked (sandboxed iframe, privacy mode),
+  the game keeps progress in memory for the session and the Hangar shows a warning.
+- **Validation:** saves are versioned JSON. Every field is rebuilt from a whitelist:
+  non-numbers, negatives, NaN and Infinity become 0, levels are clamped to their max, and
+  unknown keys are dropped.
+- **Corruption:** unparseable data is backed up to `neon-surge.meta.v1.corrupt` before a
+  fresh save is written, so nothing is destroyed silently.
+- **Write failures** (quota exceeded): the purchase still applies for this session and the
+  player is told it couldn't be saved.
+- **Multiple tabs:** every mutation re-reads storage first, and `storage` events from other
+  tabs are adopted live, so a stale tab never overwrites newer progress.
+- Rewards are banked exactly once per run, in a single write. The old high score is migrated
+  from `neon-surge.best.v1` on first launch. **Settings → Reset progress** wipes everything
+  (after a confirmation).
 
 **Enemies:** *Dart* (fast chaser), *Wisp* (weaves and dodges your shots), *Lancer*
 (telegraphed lock-on dash), *Bulwark* (slow armoured tank), *Hive* (splits into *Mites*),
-*Sentry* (keeps its distance and fires orbs you can shoot down). Every 30 s the director
-stages a set-piece wave (swarm, pincer, lancer strike, siege line, crossfire).
+*Sentry* (keeps its distance and fires orbs you can shoot down). New archetypes unlock
+wave by wave (Wisp 2, Lancer 3, Bulwark 4, Hive 5, Sentry 6). From wave 2 the director
+stages telegraphed set pieces (swarm, pincer, lancer strike, siege line, crossfire).
 
 ---
 
@@ -221,7 +318,7 @@ stages a set-piece wave (swarm, pincer, lancer strike, siege line, crossfire).
 backdrop (nebula + parallax stars)
   + warp grid  (spring-mass lattice, analytic AA lines, 16 dynamic point lights)
   + plasma trail ribbon
-  + HDR sprite batch (enemies, bolts, particles, glyphs; additive; intensity up to 8x)
+  + HDR sprite batch (enemies, bolts, arcs, particles; additive; intensity up to 8x)
         │  rendered into an RGBA16F scene target (falls back to RGBA8 if unsupported)
         ▼
 bloom: Karis-weighted soft-knee prefilter → 13-tap downsample ×6 → tent upsample (additive)
@@ -229,7 +326,16 @@ bloom: Karis-weighted soft-knee prefilter → 13-tap downsample ×6 → tent ups
 composite: shockwave refraction · radial chromatic aberration · bloom · flash ·
            filmic tonemap with highlight desaturation · vignette · danger pulse ·
            scanlines · dithered grain  → canvas
+
+#ui-layer (HTML/CSS, z-index above the canvas): HUD · announcements · combat numbers ·
+           main menu · upgrade cards · Hangar/shop · settings · pause
 ```
+
+**UI layer:** `#ui-layer` is a fixed, full-screen DOM overlay with `pointer-events: none`,
+so aiming and firing fall through to the canvas. Only the active screen takes input.
+Screens are flexbox layouts. Combat numbers are pooled DOM elements positioned each frame
+by projecting their world position through the camera, shake included, so they stay razor
+sharp at any resolution and still rattle with the world.
 
 How the brief's requirements map to the code:
 
@@ -240,19 +346,24 @@ How the brief's requirements map to the code:
   (`WarpGrid.js`).
 - **Particles:** enemy deaths throw spinning shards, velocity-stretched sparks, flickering
   embers and debris. All of them bounce off the arena walls and fade, while a matching point
-  light lights up the grid (`Effects.explosion`).
+  light lights up the grid (`Effects.explosion`). A short-lived "flash budget" shares the
+  bloom between explosions that go off together, so a chain reaction of 30 kills stays
+  readable instead of turning into a white-out. The sparks and shards stay at full count.
 - **Engine trail:** a tapered HDR ribbon plus exhaust particles that respond to thrust.
 - **Screen shake:** trauma² model driven by smooth noise. Small on each shot (plus recoil
   kick), medium on kills, violent on death; a zoom punch adds weight (`Camera.js`).
-- **Hit-stop:** 30–70 ms freezes on heavy kills, multi-kills, player damage, surge and death,
-  followed by slow-motion ramps (`Game.hitStop`, `Game.slowMo`).
+- **Hit-stop:** 30–70 ms freezes on heavy kills, multi-kills, elite kills, wave clears,
+  shield blocks, player damage, surge and death, followed by slow-motion ramps
+  (`Game.hitStop`, `Game.slowMo`). Routine kill freezes have a short cooldown so explosive
+  builds don't stutter; the big moments always land.
 - **Generative audio:** pew-pews, deep distorted bass crunches, pentatonic pickup chimes,
   alarms, and a 124 BPM synthwave track. Its kick drum pumps the mix (sidechain) and its
   layers intensify with the threat level (`AudioEngine.js`, `Music.js`).
 
 **Performance:** the world draws in about five draw calls, plus ten bloom passes. In a
-stress test with 166 enemies and 1,400+ sprites, simulation took about 0.6 ms and render
-submission about 2 ms of CPU per frame. **Auto** graphics quality lowers render scale, bloom
+stress test with a maxed build (7-bolt volleys at 22/s, explosive + cascade + shrapnel +
+arcs + 3 drones) against 160 enemies, with about 900 bolts and 10,000 sprites on screen,
+the game logic took about 1.2 ms and scene building about 1.2 ms of CPU per frame. **Auto** graphics quality lowers render scale, bloom
 mips and particle density if the frame rate drops. Accessibility options: *Reduce flashing*,
 a screen-shake slider, and `prefers-reduced-motion` support.
 

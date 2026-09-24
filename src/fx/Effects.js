@@ -10,21 +10,36 @@ const WHITE = 0xffffff;
  * dynamic lights, screen-space refraction, camera trauma, hit-stop, flashes and sound.
  */
 export class Effects {
-  constructor({ particles, lights, shocks, popups, grid, camera, audio, game }) {
+  constructor({ particles, lights, shocks, popups, arcs, grid, camera, audio, game }) {
     this.p = particles;
     this.lights = lights;
     this.shocks = shocks;
     this.popups = popups;
+    this.arcs = arcs;
     this.grid = grid;
     this.camera = camera;
     this.audio = audio;
     this.game = game;
     this.density = 1; // particle quality scale
+    // Flash budget: many detonations in the same instant share the bloom instead of
+    // stacking into a white-out. Sparks/shards are unaffected, so mass kills stay loud.
+    this.heat = 0;
     const id = (n) => particles.id(n);
     this.F = {
       glow: id('glow'), dot: id('dot'), spark: id('spark'), flare: id('flare'), ring: id('ring'),
       ringThin: id('ringThin'), ringFine: id('ringFine'), shard: id('shard'), tri: id('tri'), sq: id('sq'), beam: id('beam'),
     };
+  }
+
+  tick(dt) {
+    this.heat *= Math.exp(-6 * dt);
+  }
+
+  /** Intensity scale for the next flash; each flash adds heat. */
+  _flash(weight = 1) {
+    const k = 1 / (1 + this.heat * 0.25);
+    this.heat += weight;
+    return k;
   }
 
   pan(x) {
@@ -96,9 +111,10 @@ export class Effects {
     const rs = Math.sqrt(s);
 
     const cs = Math.min(s, 2.2); // flash size cap: big blasts get more stuff, not a bigger blob
-    p.spawn(F.glow, x, y, 0, 0, 0.16, 18 * cs, 72 * cs, WHITE, color, 2.6, 0);
-    p.spawn(F.flare, x, y, 0, 0, 0.13, 28 * cs, 85 * cs, WHITE, color, 2.4, 0, 0, 0, rand(0, TAU));
-    p.spawn(F.ringThin, x, y, 0, 0, 0.42, 10 * s, 140 * s, WHITE, color, 2.4, 0);
+    const k = this._flash(Math.min(2, s));
+    p.spawn(F.glow, x, y, 0, 0, 0.16, 18 * cs, 72 * cs, WHITE, color, 2.6 * k, 0);
+    p.spawn(F.flare, x, y, 0, 0, 0.13, 28 * cs, 85 * cs, WHITE, color, 2.4 * k, 0, 0, 0, rand(0, TAU));
+    p.spawn(F.ringThin, x, y, 0, 0, 0.42, 10 * s, 140 * s, WHITE, color, 2.4 * (0.5 + 0.5 * k), 0);
     if (s > 1.4) p.spawn(F.ringThin, x, y, 0, 0, 0.7, 8 * s, 230 * s, color, color, 1.2, 0);
 
     for (let i = 0, n = this.count(10 + 8 * s); i < n; i++) {
@@ -128,10 +144,10 @@ export class Effects {
     }
 
     this.grid.explode(x, y, 9 + 7 * s, 150 + 85 * s, 0.3 + 0.14 * s);
-    this.lights.add(x, y, 200 + 110 * s, 0.75 + 0.25 * s, color, 0.3 + 0.12 * s);
+    this.lights.add(x, y, 200 + 110 * s, (0.75 + 0.25 * s) * k, color, 0.3 + 0.12 * s);
     if (s >= 1.4) this.shocks.add(x, y, 700 + 350 * s, 0.009 * s, 0.55);
     if (!quiet) {
-      this.camera.addTrauma(0.26 + 0.12 * s, 0.85);
+      this.camera.addTrauma(0.2 + 0.1 * s, s >= 1.4 ? 0.8 : 0.55);
       this.camera.punch(0.22 * s);
     }
     if (!silent) this.audio.explode(s, this.pan(x));
@@ -252,8 +268,140 @@ export class Effects {
     this.audio.surge();
   }
 
-  popup(x, y, text, color, size = 1) {
-    this.popups.add(x, y, text, color, size);
+  /** Crisp DOM combat text (see ui/FloatText.js). */
+  popup(x, y, text, kind = 'score', size = 1) {
+    this.popups.add(x, y, text, kind, size);
+  }
+
+  // --- Upgrade effects ------------------------------------------------------------------
+
+  /** VOLATILE ROUNDS detonation. `radius` is the real damage radius. */
+  blast(x, y, radius, gen = 0) {
+    const { p, F } = this;
+    const hot = 0xffb45a;
+    const k = radius / 100;
+    const f = this._flash(0.7);
+    // The ring marks the true damage radius; the core flash stays small (it rides on top
+    // of the kill explosion that triggered it).
+    p.spawn(F.glow, x, y, 0, 0, 0.16, radius * 0.25, radius * 0.75, WHITE, hot, (1.5 - gen * 0.2) * f, 0);
+    p.spawn(F.ringThin, x, y, 0, 0, 0.26, radius * 0.2, radius * 1.05, WHITE, 0xff6a2a, 2.4 * (0.5 + 0.5 * f), 0);
+    p.spawn(F.flare, x, y, 0, 0, 0.1, radius * 0.4, radius * 0.9, WHITE, hot, 1.3 * f, 0, 0, 0, rand(0, TAU));
+    for (let i = 0, n = this.count(10 + 6 * k); i < n; i++) {
+      const a = rand(0, TAU);
+      const sp = rand(300, 900) * k;
+      p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.14, 0.32), rand(1.8, 2.8), 0.4,
+        WHITE, i % 3 ? hot : 0xff4a2a, 3.6, 0, 4, STRETCH | BOUNCE, 0, 0, 0.03);
+    }
+    for (let i = 0, n = this.count(4 + 3 * k); i < n; i++) {
+      const a = rand(0, TAU);
+      const sp = rand(40, 200) * k;
+      p.spawn(F.dot, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.4, 0.8), rand(3, 5), 1, 0xfff0c0, hot, 2, 0, 2, FLICKER);
+    }
+    this.grid.explode(x, y, 8 + 6 * k, radius * 1.6, 0.35);
+    this.lights.add(x, y, radius * 2.4, 0.8 * f, hot, 0.22);
+    if (k > 1.1) this.shocks.add(x, y, 800, 0.007 * k, 0.4);
+    this.camera.addTrauma(0.1, 0.45);
+    this.audio.blast(this.pan(x), gen);
+  }
+
+  /** ARC COIL lightning between two points. */
+  arc(x1, y1, x2, y2) {
+    const { p, F } = this;
+    const c = PALETTE.arc;
+    this.arcs.add(x1, y1, x2, y2, c);
+    p.spawn(F.glow, x2, y2, 0, 0, 0.12, 8, 34, WHITE, c, 2.2, 0);
+    for (let i = 0, n = this.count(4); i < n; i++) {
+      const a = rand(0, TAU);
+      const sp = rand(200, 600);
+      p.spawn(F.spark, x2, y2, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.08, 0.18), 1.5, 0.3, WHITE, c, 3, 0, 6, STRETCH, 0, 0, 0.025);
+    }
+    this.lights.add(x2, y2, 160, 0.6, c, 0.1);
+    this.audio.zap(this.pan(x2));
+  }
+
+  /** OVERCHARGE critical hit. */
+  crit(x, y, angle) {
+    const { p, F } = this;
+    const c = 0xff7ae6;
+    p.spawn(F.flare, x, y, 0, 0, 0.12, 18, 46, WHITE, c, 3, 0, 0, 0, angle + Math.PI / 4);
+    p.spawn(F.ring, x, y, 0, 0, 0.18, 6, 34, WHITE, c, 2.4, 0);
+    for (let i = 0, n = this.count(6); i < n; i++) {
+      const a = angle + Math.PI + rand(-1.1, 1.1);
+      const sp = rand(300, 900);
+      p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.1, 0.22), 2, 0.4, WHITE, c, 3.6, 0, 5, STRETCH, 0, 0, 0.03);
+    }
+    this.camera.addTrauma(0.05, 0.35);
+    this.audio.crit(this.pan(x));
+  }
+
+  /** RICOCHET wall bounce. */
+  bounce(x, y, nx, ny, color) {
+    const { p, F } = this;
+    const base = Math.atan2(ny, nx);
+    p.spawn(F.ring, x, y, 0, 0, 0.14, 4, 22, WHITE, color, 2, 0);
+    for (let i = 0, n = this.count(3); i < n; i++) {
+      const a = base + rand(-0.9, 0.9);
+      const sp = rand(180, 480);
+      p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.07, 0.16), 1.4, 0.3, WHITE, color, 2.4, 0, 6, STRETCH, 0, 0, 0.025);
+    }
+    this.grid.explode(x, y, 2.5, 90, 0.3);
+    this.audio.ping(this.pan(x));
+  }
+
+  /** DEFLECTOR absorbed a hit. */
+  shieldBlock(x, y) {
+    const { p, F } = this;
+    const c = PALETTE.shield;
+    p.spawn(F.ringThin, x, y, 0, 0, 0.45, 30, 300, WHITE, c, 2.8, 0);
+    p.spawn(F.glow, x, y, 0, 0, 0.25, 40, 160, WHITE, c, 2, 0);
+    for (let i = 0, n = this.count(28); i < n; i++) {
+      const a = (i / 28) * TAU;
+      const sp = rand(500, 1100);
+      p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.2, 0.4), 2.2, 0.5, WHITE, c, 3.6, 0, 3, STRETCH | BOUNCE, 0, 0, 0.03);
+    }
+    this.grid.explode(x, y, 28, 420, 0.5);
+    this.lights.add(x, y, 460, 1.1, c, 0.4);
+    this.shocks.add(x, y, 1300, 0.03, 0.5);
+    this.camera.addTrauma(0.55);
+    this.camera.punch(0.8);
+    this.audio.shieldBlock();
+  }
+
+  /** Wave cleared: a golden purge nova rolls out from the ship. */
+  purgeNova(x, y) {
+    const { p, F } = this;
+    const c = PALETTE.purge;
+    p.spawn(F.glow, x, y, 0, 0, 0.35, 60, 300, WHITE, c, 1.5, 0);
+    for (let k = 0; k < 3; k++) {
+      p.spawn(F.ringFine, x, y, 0, 0, 0.9 + k * 0.25, 30, 2000 + k * 300, WHITE, k === 1 ? PALETTE.player : c, 2.8 - k * 0.6, 0);
+    }
+    for (let i = 0, n = this.count(90); i < n; i++) {
+      const a = (i / 90) * TAU + rand(-0.03, 0.03);
+      const sp = rand(1000, 2400);
+      p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.5, 1), rand(2.5, 4), 0.6,
+        WHITE, i % 2 ? c : 0xfff2c0, 3.6, 0, 1.4, STRETCH | BOUNCE, 0, 0, 0.035);
+    }
+    this.grid.explode(x, y, 40, 1400, 0.45);
+    this.lights.add(x, y, 400, 0.9, c, 1.2, 2400);
+    this.shocks.add(x, y, 2400, 0.06, 1.1);
+    this.camera.addTrauma(0.6);
+    this.camera.punch(-1.6);
+    this.audio.roundClear();
+  }
+
+  repair(x, y) {
+    this.ascend(x, y, PALETTE.repair);
+    this.popup(x, y - 52, '+HULL', 'heal', 1.1);
+  }
+
+  /** An elite materialises: bigger portal, alarm. */
+  eliteSpawn(x, y, color, radius) {
+    const { p, F } = this;
+    this.spawnPortal(x, y, color, Math.min(radius, 44)); // drama from the gold ring, not a bigger blob
+    p.spawn(F.ringFine, x, y, 0, 0, 0.9, radius * 14, radius, WHITE, PALETTE.flux, 0.3, 2.6, 0, 0);
+    this.grid.implode(x, y, 12, 420);
+    this.lights.add(x, y, 520, 1.2, PALETTE.flux, 0.9);
+    this.audio.alarm();
   }
 
   /** Celebration sparkle (extra life, weapon upgrade) around the ship. */

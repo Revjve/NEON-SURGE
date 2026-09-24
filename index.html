@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>NEON SURGE</title>
-  <meta name="description" content="NEON SURGE — a hyper-kinetic twin-stick survival shooter drenched in bloom, shockwaves and synthwave.">
+  <meta name="description" content="NEON SURGE — a neon twin-stick roguelite: survive timed waves, stack upgrades, spend Neon Shards on permanent power.">
   <meta name="theme-color" content="#03040b">
   <link rel="icon" type="image/svg+xml" href="assets/icon.svg">
   <link rel="preload" href="assets/fonts/orbitron-latin-900-normal.woff2" as="font" type="font/woff2" crossorigin>
@@ -12,156 +12,212 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- WebGL canvas (world, particles, bloom). It never renders text. -->
   <div id="stage" aria-hidden="true"></div>
 
-  <!-- In-game HUD -->
-  <div id="hud" class="hud" hidden>
-    <div class="hud-block hud-left">
-      <div class="hud-label">SCORE</div>
-      <div id="hud-score" class="hud-score">0</div>
-      <div class="hud-mult"><span id="hud-mult">×1</span><span class="hud-label">MULTIPLIER</span></div>
-    </div>
-    <div class="hud-block hud-center">
-      <div id="hud-lives" class="hud-lives" aria-label="Lives"></div>
-      <div id="hud-weapon" class="hud-weapon">WEAPON MK I</div>
-    </div>
-    <div class="hud-block hud-right">
-      <div class="hud-label">BEST</div>
-      <div id="hud-best" class="hud-best">0</div>
-      <div id="hud-level" class="hud-level">THREAT LV 1</div>
-    </div>
-    <div class="hud-surge" id="hud-surge">
-      <div class="hud-surge-head"><span>SURGE</span><span id="hud-surge-state">CHARGING</span></div>
-      <div class="hud-surge-bar"><div id="hud-surge-fill" class="hud-surge-fill"></div></div>
-    </div>
-  </div>
+  <!-- Every piece of text lives in this crisp HTML layer stacked above the canvas. -->
+  <div id="ui-layer">
+    <div id="popups" class="popups" aria-hidden="true"></div>
 
-  <div id="announce" class="announce" aria-live="polite"></div>
-  <div id="toast" class="toast" aria-live="polite"></div>
-  <div id="fps" class="fps" hidden></div>
-
-  <!-- Boot / loading -->
-  <section id="screen-boot" class="screen active">
-    <h1 class="logo small"><span class="w1" data-text="NEON">NEON</span><span class="w2" data-text="SURGE">SURGE</span></h1>
-    <div id="boot-status" class="boot-status">INITIALISING</div>
-    <div id="boot-error" class="boot-error" hidden></div>
-  </section>
-
-  <!-- Title -->
-  <section id="screen-title" class="screen">
-    <h1 class="logo"><span class="w1" data-text="NEON">NEON</span><span class="w2" data-text="SURGE">SURGE</span></h1>
-    <p class="tagline">SURVIVE THE GRID</p>
-    <nav class="menu">
-      <button class="btn primary" data-action="play">PLAY</button>
-      <button class="btn" data-action="help">HOW TO PLAY</button>
-      <button class="btn" data-action="settings">SETTINGS</button>
-      <button class="btn desktop-only" data-action="quit">QUIT</button>
-    </nav>
-    <div class="title-best">BEST SCORE <span id="title-best">0</span></div>
-    <p class="hint">PRESS <kbd>ENTER</kbd> TO LAUNCH</p>
-    <p class="touch-note">NEON SURGE needs a keyboard + mouse or a gamepad.</p>
-  </section>
-
-  <!-- How to play -->
-  <section id="screen-help" class="screen">
-    <div class="panel wide">
-      <h2>HOW TO PLAY</h2>
-      <div class="help-grid">
-        <div class="help-col">
-          <h3>CONTROLS</h3>
-          <dl class="keys">
-            <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>ARROWS</kbd></dt><dd>Move</dd>
-            <dt><kbd>MOUSE</kbd></dt><dd>Aim</dd>
-            <dt><kbd>LEFT CLICK</kbd></dt><dd>Rapid-fire plasma</dd>
-            <dt><kbd>SPACE</kbd> / <kbd>RIGHT CLICK</kbd></dt><dd>Unleash SURGE (when charged)</dd>
-            <dt><kbd>ESC</kbd> / <kbd>P</kbd></dt><dd>Pause</dd>
-            <dt><kbd>M</kbd></dt><dd>Mute</dd>
-            <dt><kbd>F</kbd> / <kbd>F11</kbd></dt><dd>Fullscreen</dd>
-            <dt>GAMEPAD</dt><dd>Left stick move · right stick aim &amp; fire · LB / A surge</dd>
-          </dl>
-          <h3>SURVIVAL</h3>
-          <ul class="tips">
-            <li>Kills drop <b class="gold">gold flux</b>. Collect it to raise your score multiplier.</li>
-            <li>Getting hit costs a ship and resets the multiplier.</li>
-            <li>Every kill charges <b class="violet">SURGE</b>, a shockwave that wipes the screen.</li>
-            <li>Score unlocks weapon upgrades. It also makes the swarm faster and tougher.</li>
-          </ul>
-        </div>
-        <div class="help-col">
-          <h3>HOSTILES</h3>
-          <ul class="bestiary">
-            <li><i style="--c:#ff2bd6"></i><b>DART</b><span>Relentless chaser. Hunts in packs.</span></li>
-            <li><i style="--c:#4d8bff"></i><b>WISP</b><span>Weaves and side-steps your fire.</span></li>
-            <li><i style="--c:#c6ff2e"></i><b>LANCER</b><span>Locks on, then dashes along its beam.</span></li>
-            <li><i style="--c:#ff7a1a"></i><b>BULWARK</b><span>Slow armoured tank. Huge explosion.</span></li>
-            <li><i style="--c:#a45cff"></i><b>HIVE</b><span>Bursts into fast mites when destroyed.</span></li>
-            <li><i style="--c:#ff2d55"></i><b>SENTRY</b><span>Keeps its distance and fires plasma orbs. Shoot the orbs down.</span></li>
-          </ul>
+    <!-- In-game HUD -->
+    <div id="hud" class="hud" hidden>
+      <div class="hud-block hud-left">
+        <div class="hud-label">SCORE</div>
+        <div id="hud-score" class="hud-score">0</div>
+        <div class="hud-mult"><span id="hud-mult">×1</span><span class="hud-label">MULTIPLIER</span></div>
+      </div>
+      <div class="hud-block hud-center">
+        <div class="hud-wave"><span>WAVE</span><b id="hud-wave">1</b></div>
+        <div id="hud-timer" class="hud-timer"><div id="hud-timer-fill" class="hud-timer-fill"></div></div>
+        <div id="hud-timer-text" class="hud-timer-text">0:25</div>
+        <div class="hud-defense">
+          <div id="hud-hull" class="pips hull-pips" aria-label="Hull"></div>
+          <div id="hud-shield" class="pips shield-pips" aria-label="Deflector charges"></div>
         </div>
       </div>
-      <button class="btn" data-action="back">BACK</button>
+      <div class="hud-block hud-right">
+        <div class="hud-label">BEST</div>
+        <div id="hud-best" class="hud-best">0</div>
+        <div class="hud-shards" title="Neon Shards this run will pay out"><span class="shard-gem"></span><span id="hud-shards">+0</span></div>
+      </div>
+      <div id="hud-build" class="chips hud-build" aria-label="Current build"></div>
+      <div class="hud-surge" id="hud-surge">
+        <div class="hud-surge-head"><span>SURGE</span><span id="hud-surge-state">CHARGING</span></div>
+        <div class="hud-surge-bar"><div id="hud-surge-fill" class="hud-surge-fill"></div></div>
+      </div>
     </div>
-  </section>
 
-  <!-- Settings -->
-  <section id="screen-settings" class="screen">
-    <div class="panel">
-      <h2>SETTINGS</h2>
-      <div class="settings">
-        <label class="row"><span>MASTER VOLUME</span><input type="range" min="0" max="100" data-setting="master"></label>
-        <label class="row"><span>MUSIC</span><input type="range" min="0" max="100" data-setting="music"></label>
-        <label class="row"><span>EFFECTS</span><input type="range" min="0" max="100" data-setting="sfx"></label>
-        <label class="row"><span>SCREEN SHAKE</span><input type="range" min="0" max="100" data-setting="shake"></label>
-        <div class="row"><span>GRAPHICS</span>
-          <div class="seg" data-setting="quality">
-            <button data-value="auto">AUTO</button><button data-value="high">HIGH</button><button data-value="medium">MED</button><button data-value="low">LOW</button>
+    <div id="announce" class="announce" aria-live="polite"></div>
+    <div id="toast" class="toast" aria-live="polite"></div>
+    <div id="fps" class="fps" hidden></div>
+
+    <!-- Boot / loading -->
+    <section id="screen-boot" class="screen active">
+      <h1 class="logo small"><span class="w1" data-text="NEON">NEON</span><span class="w2" data-text="SURGE">SURGE</span></h1>
+      <div id="boot-status" class="boot-status">INITIALISING</div>
+      <div id="boot-error" class="boot-error" hidden></div>
+    </section>
+
+    <!-- Main menu -->
+    <section id="screen-title" class="screen">
+      <h1 class="logo"><span class="w1" data-text="NEON">NEON</span><span class="w2" data-text="SURGE">SURGE</span></h1>
+      <p class="tagline">SURVIVE THE GRID</p>
+      <div class="wallet"><span class="shard-gem"></span><b id="title-shards">0</b><span>NEON SHARDS</span></div>
+      <nav class="menu">
+        <button class="btn primary" data-action="play">LAUNCH RUN</button>
+        <button class="btn" data-action="hangar">HANGAR<span id="title-affordable" class="btn-badge" hidden>UPGRADE READY</span></button>
+        <button class="btn" data-action="help">HOW TO PLAY</button>
+        <button class="btn" data-action="settings">SETTINGS</button>
+        <button class="btn desktop-only" data-action="quit">QUIT</button>
+      </nav>
+      <div class="title-records">BEST WAVE <span id="title-wave">0</span><i></i>BEST SCORE <span id="title-best">0</span></div>
+      <p class="hint">PRESS <kbd>ENTER</kbd> TO LAUNCH</p>
+      <p class="touch-note">NEON SURGE needs a keyboard + mouse or a gamepad.</p>
+    </section>
+
+    <!-- How to play -->
+    <section id="screen-help" class="screen">
+      <div class="panel wide">
+        <h2>HOW TO PLAY</h2>
+        <div class="help-grid">
+          <div class="help-col">
+            <h3>CONTROLS</h3>
+            <dl class="keys">
+              <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / <kbd>ARROWS</kbd></dt><dd>Move</dd>
+              <dt><kbd>MOUSE</kbd></dt><dd>Aim</dd>
+              <dt><kbd>LEFT CLICK</kbd></dt><dd>Rapid-fire plasma</dd>
+              <dt><kbd>SPACE</kbd> / <kbd>RIGHT CLICK</kbd></dt><dd>Unleash SURGE (when charged)</dd>
+              <dt><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> · <kbd>R</kbd></dt><dd>Pick an upgrade · reroll</dd>
+              <dt><kbd>ESC</kbd> / <kbd>P</kbd></dt><dd>Pause</dd>
+              <dt><kbd>M</kbd> · <kbd>F</kbd></dt><dd>Mute · fullscreen</dd>
+              <dt>GAMEPAD</dt><dd>Left stick move · right stick aim &amp; fire · LB surge · Y reroll</dd>
+            </dl>
+            <h3>THE RUN</h3>
+            <ul class="tips">
+              <li>Each <b>wave</b> is timed. Survive until the timer hits zero and the arena is purged.</li>
+              <li>After every wave, <b>pick 1 of 3 upgrades</b>. They stack: extra bolts carry every bullet mod, so Split Barrel + Volatile Rounds means every bolt explodes.</li>
+              <li>Every 5th wave brings an <b class="gold">elite</b>. The wave doesn't end until it's destroyed.</li>
+              <li>Kills drop <b class="gold">gold flux</b> (score multiplier) and charge <b class="violet">SURGE</b>, a screen-wiping shockwave.</li>
+              <li>When your hull breaks, the run's <b class="cyan">Neon Shards</b> go to the <b>Hangar</b> for permanent upgrades.</li>
+            </ul>
+          </div>
+          <div class="help-col">
+            <h3>HOSTILES</h3>
+            <ul class="bestiary">
+              <li><i style="--c:#ff2bd6"></i><b>DART</b><span>Relentless chaser. Hunts in packs.</span></li>
+              <li><i style="--c:#4d8bff"></i><b>WISP</b><span>Weaves and side-steps your fire.</span></li>
+              <li><i style="--c:#c6ff2e"></i><b>LANCER</b><span>Locks on, then dashes along its beam.</span></li>
+              <li><i style="--c:#ff7a1a"></i><b>BULWARK</b><span>Slow armoured tank. Huge explosion.</span></li>
+              <li><i style="--c:#a45cff"></i><b>HIVE</b><span>Bursts into fast mites when destroyed.</span></li>
+              <li><i style="--c:#ff2d55"></i><b>SENTRY</b><span>Keeps its distance and fires plasma orbs. Shoot the orbs down.</span></li>
+              <li><i style="--c:#ffc94a"></i><b>ELITE</b><span>Crowned, armoured variant of a heavy. Pays a shard bounty.</span></li>
+            </ul>
           </div>
         </div>
-        <label class="row toggle"><span>REDUCE FLASHING</span><input type="checkbox" data-setting="reduceFlashes"><i></i></label>
-        <label class="row toggle"><span>CRT SCANLINES</span><input type="checkbox" data-setting="scanlines"><i></i></label>
-        <label class="row toggle"><span>SHOW FPS</span><input type="checkbox" data-setting="showFps"><i></i></label>
-        <div class="row"><span>DISPLAY</span><button class="btn small" data-action="fullscreen">TOGGLE FULLSCREEN</button></div>
+        <button class="btn" data-action="back">BACK</button>
       </div>
-      <button class="btn" data-action="back">BACK</button>
+    </section>
+
+    <!-- Settings -->
+    <section id="screen-settings" class="screen">
+      <div class="panel">
+        <h2>SETTINGS</h2>
+        <div class="settings">
+          <label class="row"><span>MASTER VOLUME</span><input type="range" min="0" max="100" data-setting="master"></label>
+          <label class="row"><span>MUSIC</span><input type="range" min="0" max="100" data-setting="music"></label>
+          <label class="row"><span>EFFECTS</span><input type="range" min="0" max="100" data-setting="sfx"></label>
+          <label class="row"><span>SCREEN SHAKE</span><input type="range" min="0" max="100" data-setting="shake"></label>
+          <div class="row"><span>GRAPHICS</span>
+            <div class="seg" data-setting="quality">
+              <button data-value="auto">AUTO</button><button data-value="high">HIGH</button><button data-value="medium">MED</button><button data-value="low">LOW</button>
+            </div>
+          </div>
+          <label class="row toggle"><span>REDUCE FLASHING</span><input type="checkbox" data-setting="reduceFlashes"><i></i></label>
+          <label class="row toggle"><span>CRT SCANLINES</span><input type="checkbox" data-setting="scanlines"><i></i></label>
+          <label class="row toggle"><span>SHOW FPS</span><input type="checkbox" data-setting="showFps"><i></i></label>
+          <div class="row"><span>DISPLAY</span><button class="btn small" data-action="fullscreen">TOGGLE FULLSCREEN</button></div>
+          <div class="row"><span>PROGRESS</span><button class="btn small danger" data-action="confirm">RESET PROGRESS</button></div>
+        </div>
+        <button class="btn" data-action="back">BACK</button>
+      </div>
+    </section>
+
+    <!-- Reset confirmation -->
+    <section id="screen-confirm" class="screen">
+      <div class="panel narrow">
+        <h2>RESET PROGRESS?</h2>
+        <p class="panel-text">This permanently deletes your Neon Shards, every Hangar upgrade and your records. It cannot be undone.</p>
+        <nav class="menu row">
+          <button class="btn primary" data-action="back">CANCEL</button>
+          <button class="btn danger" data-action="resetProgress">RESET EVERYTHING</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- Pause -->
+    <section id="screen-pause" class="screen">
+      <h2 class="screen-title">PAUSED</h2>
+      <nav class="menu">
+        <button class="btn primary" data-action="resume">RESUME</button>
+        <button class="btn" data-action="settings">SETTINGS</button>
+        <button class="btn danger" data-action="abandon">ABANDON RUN</button>
+      </nav>
+      <div class="pause-build"><span class="hud-label">BUILD</span><div id="pause-build" class="chips"></div></div>
+    </section>
+
+    <!-- Between waves: choose 1 of 3 upgrades -->
+    <section id="screen-upgrade" class="screen screen-upgrade" aria-labelledby="up-title">
+      <div id="up-kicker" class="up-kicker">WAVE 1 CLEARED</div>
+      <h2 id="up-title" class="screen-title">CHOOSE AN UPGRADE</h2>
+      <div id="up-cards" class="cards" role="group" aria-label="Upgrades"></div>
+      <div class="up-foot">
+        <button id="up-reroll" class="btn small" data-action="reroll">REROLL <b id="up-rerolls">0</b></button>
+        <span class="up-hint"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> PICK <i></i> <kbd>R</kbd> REROLL</span>
+      </div>
+      <div class="up-build"><span class="hud-label">BUILD</span><div id="up-build" class="chips"></div></div>
+    </section>
+
+    <!-- Death / Hangar: run rewards + permanent upgrade shop -->
+    <section id="screen-hangar" class="screen screen-hangar">
+      <div class="hangar">
+        <header class="hangar-head">
+          <div>
+            <h2 class="hangar-title">HANGAR</h2>
+            <p class="hangar-sub">PERMANENT UPGRADES · PAID IN NEON SHARDS</p>
+          </div>
+          <div class="wallet big"><span class="shard-gem"></span><b id="hangar-shards">0</b><span>NEON SHARDS</span></div>
+        </header>
+        <div class="hangar-body">
+          <aside id="run-summary" class="run-summary" hidden>
+            <div class="rs-head"><span id="rs-reason" class="rs-reason">SIGNAL LOST</span><b id="rs-wave">WAVE 1</b></div>
+            <div id="rs-badges" class="rs-badges"></div>
+            <dl class="rs-stats">
+              <div><dt>SCORE</dt><dd id="rs-score">0</dd></div>
+              <div><dt>SURVIVED</dt><dd id="rs-time">0:00</dd></div>
+              <div><dt>KILLS</dt><dd id="rs-kills">0</dd></div>
+              <div><dt>MAX MULT</dt><dd id="rs-mult">×1</dd></div>
+            </dl>
+            <ul id="rs-rewards" class="rs-rewards"></ul>
+            <div class="rs-total"><span>SHARDS EARNED</span><b id="rs-total">+0</b></div>
+            <div id="rs-build" class="chips"></div>
+          </aside>
+          <div id="shop" class="shop-grid"></div>
+        </div>
+        <p id="save-warning" class="save-warning" hidden>This browser is blocking storage, so progress only lasts until the tab closes. Allow site data (or disable private mode) to keep it.</p>
+        <nav class="menu row">
+          <button class="btn primary" data-action="play">LAUNCH RUN</button>
+          <button class="btn" data-action="title">MAIN MENU</button>
+        </nav>
+      </div>
+    </section>
+
+    <!-- Desktop (frameless window) title bar, only in windowed mode on menus -->
+    <div id="titlebar" class="titlebar" hidden>
+      <div class="titlebar-drag">NEON SURGE</div>
+      <button class="titlebar-btn" data-win="fullscreen" title="Fullscreen (F11)" aria-label="Fullscreen">&#x26F6;</button>
+      <button class="titlebar-btn" data-win="minimize" title="Minimize" aria-label="Minimize">&#x2013;</button>
+      <button class="titlebar-btn close" data-win="close" title="Quit" aria-label="Quit">&#x2715;</button>
     </div>
-  </section>
-
-  <!-- Pause -->
-  <section id="screen-pause" class="screen">
-    <h2 class="screen-title">PAUSED</h2>
-    <nav class="menu">
-      <button class="btn primary" data-action="resume">RESUME</button>
-      <button class="btn" data-action="restart">RESTART</button>
-      <button class="btn" data-action="settings">SETTINGS</button>
-      <button class="btn" data-action="title">QUIT TO TITLE</button>
-    </nav>
-  </section>
-
-  <!-- Game over -->
-  <section id="screen-over" class="screen">
-    <h2 class="screen-title danger">GAME OVER</h2>
-    <div id="over-best" class="badge" hidden>NEW BEST</div>
-    <div class="over-score" id="over-score">0</div>
-    <div class="stats">
-      <div><span>SURVIVED</span><b id="over-time">0:00</b></div>
-      <div><span>KILLS</span><b id="over-kills">0</b></div>
-      <div><span>MAX MULTIPLIER</span><b id="over-mult">×1</b></div>
-      <div><span>ACCURACY</span><b id="over-acc">0%</b></div>
-      <div><span>THREAT LEVEL</span><b id="over-level">1</b></div>
-      <div><span>BEST</span><b id="over-bestscore">0</b></div>
-    </div>
-    <nav class="menu row">
-      <button class="btn primary" data-action="play">RETRY</button>
-      <button class="btn" data-action="title">MAIN MENU</button>
-    </nav>
-  </section>
-
-  <!-- Desktop (frameless window) title bar, only in windowed mode on menus -->
-  <div id="titlebar" class="titlebar" hidden>
-    <div class="titlebar-drag">NEON SURGE</div>
-    <button class="titlebar-btn" data-win="fullscreen" title="Fullscreen (F11)" aria-label="Fullscreen">&#x26F6;</button>
-    <button class="titlebar-btn" data-win="minimize" title="Minimize" aria-label="Minimize">&#x2013;</button>
-    <button class="titlebar-btn close" data-win="close" title="Quit" aria-label="Quit">&#x2715;</button>
   </div>
 
   <noscript><div class="noscript">NEON SURGE needs JavaScript enabled.</div></noscript>

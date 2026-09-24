@@ -5,6 +5,7 @@ import { AudioEngine } from './audio/AudioEngine.js';
 import { Input } from './core/Input.js';
 import { UI } from './ui/UI.js';
 import { Game } from './game/Game.js';
+import { Meta } from './game/Meta.js';
 import { loadSettings, saveSettings } from './ui/settings.js';
 
 window.__NEON_BOOTED__ = true;
@@ -39,21 +40,34 @@ async function boot() {
   ui.bootStatus('COMPILING SHADERS');
   const stage = document.getElementById('stage');
   const pipeline = await Pipeline.create(stage);
-  const atlas = new Atlas().build('Orbitron');
+  const atlas = new Atlas().build();
   const audio = new AudioEngine();
   const input = new Input(stage);
   const settings = loadSettings();
+  const meta = new Meta(); // Neon Shards + Hangar levels (localStorage, validated)
   ui.audio = audio;
 
-  const game = new Game({ pipeline, atlas, audio, input, ui, settings, debug });
-  ui.setBest(game.best);
+  const game = new Game({ pipeline, atlas, audio, input, ui, settings, meta, debug });
 
-  ui.on('play', () => game.start());
-  ui.on('restart', () => game.start());
+  ui.on('play', () => game.startRun());
+  ui.on('hangar', () => game.openHangar(null));
   ui.on('resume', () => game.resume());
+  ui.on('abandon', () => game.abandonRun());
   ui.on('title', () => game.toTitle());
+  ui.on('pick', (i) => game.pickUpgrade(i));
+  ui.on('reroll', () => game.rerollUpgrades());
+  ui.on('buy', (id) => game.buy(id));
+  ui.on('resetProgress', () => {
+    game.resetProgress();
+    ui.back();
+  });
   ui.on('fullscreen', () => toggleFullscreen());
   ui.on('quit', () => desktop?.quit());
+  // Wallet changed (purchase, reset, or another tab): keep every visible number honest.
+  meta.subscribe((reason) => {
+    ui.refreshWallet(meta);
+    if (reason !== 'buy' && game.state === 'hangar') ui.renderShop(meta);
+  });
   ui.bindSettings(settings, (s) => {
     game.applySettings(s);
     saveSettings(s);
@@ -68,7 +82,7 @@ async function boot() {
   // Audio: the desktop build may autoplay; browsers need a first user gesture.
   const unlockAudio = () => {
     audio.unlock();
-    if (audio.music && (game.state === 'title' || game.state === 'gameover')) audio.music.start();
+    if (audio.music && (game.state === 'title' || game.state === 'hangar')) audio.music.start();
     if (audio.ready) {
       window.removeEventListener('pointerdown', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
@@ -88,6 +102,7 @@ async function boot() {
   window.addEventListener('blur', () => game.pause());
 
   if (debug.enabled) window.NEON = game;
+  if (!meta.persistent) console.warn('[neon-surge] storage unavailable: progress is kept for this session only');
   console.info(`[neon-surge] PixiJS ${PIXI_VERSION} (${pixiSource}), ${pipeline.hdr ? 'HDR' : 'LDR'} pipeline`);
 
   let failed = false;

@@ -26,7 +26,9 @@ export class Flux {
 
   update(dt, game) {
     const p = game.player;
-    const magnet = FLUX.magnetRadius * (game.surgeWave ? 6 : 1);
+    // Wave cleared: every shard is vacuumed to the ship.
+    const vacuum = game.state === 'roundClear';
+    const magnet = vacuum ? 5000 : (game.stats?.magnet ?? FLUX.magnetRadius) * (game.surgeWave ? 6 : 1);
     for (let i = this.active.length - 1; i >= 0; i--) {
       const f = this.active[i];
       f.life -= dt;
@@ -41,7 +43,7 @@ export class Flux {
           game.collectFlux(f);
           f.active = false;
         } else if (d < magnet) {
-          const pull = 3200 * (1 - d / magnet) + 900;
+          const pull = vacuum ? 5200 : 3200 * (1 - d / magnet) + 900;
           f.vx += (dx / d) * pull * dt;
           f.vy += (dy / d) * pull * dt;
           drag = 3.2;
@@ -52,6 +54,7 @@ export class Flux {
       f.vy *= k;
       f.x = Math.min(ARENA.w - 6, Math.max(6, f.x + f.vx * dt));
       f.y = Math.min(ARENA.h - 6, Math.max(6, f.y + f.vy * dt));
+      if (vacuum) f.life = Math.max(f.life, 1);
       if (!f.active || f.life <= 0) {
         f.active = false;
         this.active[i] = this.active[this.active.length - 1];

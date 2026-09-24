@@ -88,13 +88,23 @@ export class Camera {
     this.scale = fit * this.zoom;
     const px = viewH / 1080;
     const kick = this.intensity;
+    this.posX = viewW / 2 + (this.shakeX + this.kickX * kick) * px;
+    this.posY = viewH / 2 + (this.shakeY + this.kickY * kick) * px;
     container.scale.set(this.scale);
     container.rotation = this.shakeRot;
     container.pivot.set(this.x, this.y);
-    container.position.set(
-      viewW / 2 + (this.shakeX + this.kickX * kick) * px,
-      viewH / 2 + (this.shakeY + this.kickY * kick) * px,
-    );
+    container.position.set(this.posX, this.posY);
+  }
+
+  /** World -> scene-target pixels *including* shake/kick/rotation (for DOM overlays). */
+  project(wx, wy, out) {
+    const lx = (wx - this.x) * this.scale;
+    const ly = (wy - this.y) * this.scale;
+    const c = Math.cos(this.shakeRot);
+    const s = Math.sin(this.shakeRot);
+    out.x = (this.posX ?? this.viewW / 2) + lx * c - ly * s;
+    out.y = (this.posY ?? this.viewH / 2) + lx * s + ly * c;
+    return out;
   }
 
   /** Shake-free mapping from scene-target pixels to world units (for stable aiming). */

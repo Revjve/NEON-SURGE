@@ -30,9 +30,12 @@ export class SpatialHash {
     bucket.push(obj);
   }
 
-  /** Objects whose cell overlaps the circle's bounding box (caller does the exact test). */
-  query(x, y, radius) {
-    const out = this.result;
+  /**
+   * Objects whose cell overlaps the circle's bounding box (caller does the exact test).
+   * Pass your own `out` array whenever the caller may trigger another query while it is
+   * still iterating (kills that spawn blasts, arcs, shrapnel...).
+   */
+  query(x, y, radius, out = this.result) {
     out.length = 0;
     const s = this.size;
     const x0 = Math.max(0, Math.floor((x - radius + this.pad) / s));
