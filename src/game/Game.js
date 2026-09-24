@@ -805,7 +805,7 @@ export class Game {
       if (this.popupBudget > 0) {
         this.popupBudget--;
         const big = size > 1.5;
-        this.fx.popup(e.x, e.y - e.radius - 8, fmt(pts), big ? 'big' : 'score', big ? 1.25 : 1);
+        this.fx.popup(e.x + rand(-14, 14), e.y - e.radius - 8 - rand(0, 16), fmt(pts), big ? 'big' : 'score', big ? 1.25 : 1);
       }
       if (cause !== 'purge') {
         const chance = def.flux + this.stats.fluxBonus;

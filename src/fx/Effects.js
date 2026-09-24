@@ -22,7 +22,8 @@ export class Effects {
     this.game = game;
     this.density = 1; // particle quality scale
     // Flash budget: many detonations in the same instant share the bloom instead of
-    // stacking into a white-out. Sparks/shards are unaffected, so mass kills stay loud.
+    // stacking into a white-out. A lone kill gets the full show; the 40th kill of a chain
+    // reaction gets a dimmer flash and ~60% of the debris, so the total stays readable.
     this.heat = 0;
     const id = (n) => particles.id(n);
     this.F = {
@@ -40,6 +41,11 @@ export class Effects {
     const k = 1 / (1 + this.heat * 0.25);
     this.heat += weight;
     return k;
+  }
+
+  /** Particle count for an effect under flash budget `k` (never below 60%). */
+  _debris(n, k) {
+    return this.count(n * (0.6 + 0.4 * k));
   }
 
   pan(x) {
@@ -117,33 +123,34 @@ export class Effects {
     p.spawn(F.ringThin, x, y, 0, 0, 0.42, 10 * s, 140 * s, WHITE, color, 2.4 * (0.5 + 0.5 * k), 0);
     if (s > 1.4) p.spawn(F.ringThin, x, y, 0, 0, 0.7, 8 * s, 230 * s, color, color, 1.2, 0);
 
-    for (let i = 0, n = this.count(10 + 8 * s); i < n; i++) {
+    const pk = 0.45 + 0.55 * k; // debris brightness under the flash budget
+    for (let i = 0, n = this._debris(10 + 8 * s, k); i < n; i++) {
       const a = rand(0, TAU);
       const sp = rand(160, 640) * rs;
       const sz = rand(5, 10) * rs;
       p.spawn(F.shard, x + Math.cos(a) * 6, y + Math.sin(a) * 6, Math.cos(a) * sp, Math.sin(a) * sp,
-        rand(0.8, 1.6), sz, sz * 0.4, WHITE, color, 3.2, 0, 1.9, BOUNCE | SPIN, rand(0, TAU), rand(-14, 14));
+        rand(0.8, 1.6), sz, sz * 0.4, WHITE, color, 3.2 * pk, 0, 1.9, BOUNCE | SPIN, rand(0, TAU), rand(-14, 14));
     }
-    for (let i = 0, n = this.count(14 + 12 * s); i < n; i++) {
+    for (let i = 0, n = this._debris(14 + 12 * s, k); i < n; i++) {
       const a = rand(0, TAU);
       const sp = rand(380, 1350) * rs;
       p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.22, 0.55), rand(1.8, 3), 0.5,
-        WHITE, color, 4, 0, 3.4, STRETCH | BOUNCE, 0, 0, 0.034);
+        WHITE, color, 4 * pk, 0, 3.4, STRETCH | BOUNCE, 0, 0, 0.034);
     }
-    for (let i = 0, n = this.count(6 + 6 * s); i < n; i++) {
+    for (let i = 0, n = this._debris(6 + 6 * s, k); i < n; i++) {
       const a = rand(0, TAU);
       const sp = rand(30, 260) * rs;
       p.spawn(F.dot, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.8, 1.9), rand(3, 5.5), 1,
-        mixHex(color, WHITE, 0.4), color, 2, 0, 1.3, FLICKER | BOUNCE);
+        mixHex(color, WHITE, 0.4), color, 2 * pk, 0, 1.3, FLICKER | BOUNCE);
     }
-    for (let i = 0, n = this.count(4 * s); i < n; i++) {
+    for (let i = 0, n = this._debris(4 * s, k); i < n; i++) {
       const a = rand(0, TAU);
       const sp = rand(120, 480) * rs;
       p.spawn(F.sq, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.6, 1.2), rand(2, 3.5), 1,
-        WHITE, color, 2.6, 0, 2.2, BOUNCE | SPIN, rand(0, TAU), rand(-20, 20));
+        WHITE, color, 2.6 * pk, 0, 2.2, BOUNCE | SPIN, rand(0, TAU), rand(-20, 20));
     }
 
-    this.grid.explode(x, y, 9 + 7 * s, 150 + 85 * s, 0.3 + 0.14 * s);
+    this.grid.explode(x, y, 9 + 7 * s, 150 + 85 * s, (0.3 + 0.14 * s) * k);
     this.lights.add(x, y, 200 + 110 * s, (0.75 + 0.25 * s) * k, color, 0.3 + 0.12 * s);
     if (s >= 1.4) this.shocks.add(x, y, 700 + 350 * s, 0.009 * s, 0.55);
     if (!quiet) {
@@ -201,6 +208,7 @@ export class Effects {
   playerHit(x, y) {
     const { p, F } = this;
     const c = PALETTE.player;
+    this.heat = 0; // the big moments always get the full flash
     this.explosion(x, y, c, 2.6, { silent: true, quiet: true });
     p.spawn(F.ringFine, x, y, 0, 0, 0.8, 20, 560, WHITE, PALETTE.danger, 2.4, 0);
     for (let i = 0, n = this.count(40); i < n; i++) {
@@ -220,6 +228,7 @@ export class Effects {
   playerDeath(x, y) {
     const { p, F } = this;
     const c = PALETTE.player;
+    this.heat = 0;
     this.explosion(x, y, c, 3.5, { silent: true, quiet: true });
     this.explosion(x, y, PALETTE.danger, 2.5, { silent: true, quiet: true });
     for (let k = 0; k < 3; k++) {
@@ -286,18 +295,19 @@ export class Effects {
     p.spawn(F.glow, x, y, 0, 0, 0.16, radius * 0.25, radius * 0.75, WHITE, hot, (1.5 - gen * 0.2) * f, 0);
     p.spawn(F.ringThin, x, y, 0, 0, 0.26, radius * 0.2, radius * 1.05, WHITE, 0xff6a2a, 2.4 * (0.5 + 0.5 * f), 0);
     p.spawn(F.flare, x, y, 0, 0, 0.1, radius * 0.4, radius * 0.9, WHITE, hot, 1.3 * f, 0, 0, 0, rand(0, TAU));
-    for (let i = 0, n = this.count(10 + 6 * k); i < n; i++) {
+    const pk = 0.45 + 0.55 * f;
+    for (let i = 0, n = this._debris(10 + 6 * k, f); i < n; i++) {
       const a = rand(0, TAU);
       const sp = rand(300, 900) * k;
       p.spawn(F.spark, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.14, 0.32), rand(1.8, 2.8), 0.4,
-        WHITE, i % 3 ? hot : 0xff4a2a, 3.6, 0, 4, STRETCH | BOUNCE, 0, 0, 0.03);
+        WHITE, i % 3 ? hot : 0xff4a2a, 3.6 * pk, 0, 4, STRETCH | BOUNCE, 0, 0, 0.03);
     }
-    for (let i = 0, n = this.count(4 + 3 * k); i < n; i++) {
+    for (let i = 0, n = this._debris(4 + 3 * k, f); i < n; i++) {
       const a = rand(0, TAU);
       const sp = rand(40, 200) * k;
-      p.spawn(F.dot, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.4, 0.8), rand(3, 5), 1, 0xfff0c0, hot, 2, 0, 2, FLICKER);
+      p.spawn(F.dot, x, y, Math.cos(a) * sp, Math.sin(a) * sp, rand(0.4, 0.8), rand(3, 5), 1, 0xfff0c0, hot, 2 * pk, 0, 2, FLICKER);
     }
-    this.grid.explode(x, y, 8 + 6 * k, radius * 1.6, 0.35);
+    this.grid.explode(x, y, 8 + 6 * k, radius * 1.6, 0.35 * f);
     this.lights.add(x, y, radius * 2.4, 0.8 * f, hot, 0.22);
     if (k > 1.1) this.shocks.add(x, y, 800, 0.007 * k, 0.4);
     this.camera.addTrauma(0.1, 0.45);

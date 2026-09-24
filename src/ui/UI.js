@@ -234,6 +234,7 @@ export class UI {
 
   showUpgrades(view, rerolled = false) {
     const E = this.el;
+    E.announce.replaceChildren(); // e.g. "WAVE 3 CLEARED" would ghost through behind the cards
     E.upKicker.textContent = `WAVE ${view.round} CLEARED`;
     E.upCards.replaceChildren(...view.offers.map((o, i) => this._card(o, i)));
     E.upRerolls.textContent = String(view.rerolls);
